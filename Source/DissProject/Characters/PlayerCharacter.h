@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "../Pickups/PickupBase.h"
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
 #include "GameFramework/Character.h"
@@ -16,6 +17,10 @@ DECLARE_DELEGATE_OneParam(FToggleState, bool);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDamage, float, NewHealth);
 // We also make a delegate for when the action button is pressed
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnActionPressed);
+// We announce a change in wealth
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMoneyUpdate, int32, NewMoney);
+// We announce that a weapon has been drawn
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponDraw, bool, WeaponDrawn);
 // We finally make a delegate for if the player dies
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerDeath);
 
@@ -62,10 +67,24 @@ public:
 	UPROPERTY()
 		bool IsCrouching = false;
 
+	// Variables for the overlapping pickups
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Pickups")
+		APickupBase* OverlappedPickup = nullptr;
+
+	// Variables related to the player's inventory
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
+		int32 CurrentMoney = 0;
+
 	// Event distributors
 	// Used to announce that the action button has been pressed
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 		FOnActionPressed OnActionPressed;
+	// Used to announce that the player has gained or lost money
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+		FOnMoneyUpdate OnMoneyUpdate;
+	// Used to announce that the player has changed weapon
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+		FOnWeaponDraw OnWeaponDraw;
 
 protected:
 	// Called when the game starts or when spawned
@@ -95,7 +114,13 @@ public:
 	// Crouches the player down
 	void ToggleCrouch(bool Crouching);
 	// Announces the action button is pressed
-	void Action() { OnActionPressed.Broadcast(); };
+	void Action();
+
+	// EFFECTS
+	// Used to tell the world that money has been collected
+	void UpdateMoney(int32 Money);
+	// Used to tell the world a weapon has been drawn
+	void DrawWeapon();
 
 	// ATTACKS
 	// Used to tell the player they have been attacked by a zombie

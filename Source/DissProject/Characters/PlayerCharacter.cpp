@@ -140,6 +140,32 @@ void APlayerCharacter::ToggleCrouch(bool Crouching)
 		}
 	}
 }
+// Announces that the action button has been pressed
+void APlayerCharacter::Action()
+{
+	// First we announce that the action button's been pressed
+	OnActionPressed.Broadcast();
+
+	// And then we check if the player is overlapping, and if so, we activate its effect
+	if (OverlappedPickup) OverlappedPickup->Activate();
+}
+
+// EFFECTS
+// Used to tell the world that money has been collected
+void APlayerCharacter::UpdateMoney(int32 Money)
+{
+	// First we update the player's money
+	CurrentMoney += Money;
+
+	// And then we announce the new total
+	OnMoneyUpdate.Broadcast(CurrentMoney);
+
+}
+// Used to tell the world a weapon has been drawn
+void APlayerCharacter::DrawWeapon()
+{
+	OnWeaponDraw.Broadcast(true);
+}
 
 // ATTACKS
 // Used to tell the player they have been attacked by a zombie
