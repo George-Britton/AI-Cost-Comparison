@@ -21,7 +21,4 @@ void AMoney::Activate()
 void AMoney::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
-
-	// Spin the money around
-	PickupMeshComponent->AddLocalRotation(FRotator(0.f, 1.f, 0.f));
 }

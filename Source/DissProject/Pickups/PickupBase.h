@@ -24,6 +24,8 @@ public:
 		UStaticMesh* PickupMesh = nullptr;
 	UPROPERTY()
 		UStaticMeshComponent* PickupMeshComponent = nullptr;
+	UPROPERTY(EditAnywhere, Category = "Appearance")
+		float SpinSpeed = 1.f;
 
 	// The overlap box to tell the player they are within range of the pickup
 	UPROPERTY(EditAnywhere, Category = "Interaction")
