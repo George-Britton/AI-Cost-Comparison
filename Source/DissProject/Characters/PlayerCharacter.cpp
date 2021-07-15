@@ -23,6 +23,10 @@ APlayerCharacter::APlayerCharacter()
 	PlayerCamera->SetRelativeLocation(FVector(0, 0, CameraHeight));
 	DamageSoundComponent->SetupAttachment(this->RootComponent);
 	DamageSoundComponent->SetAutoActivate(false);
+	Inventory = CreateDefaultSubobject<UInventory>(TEXT("Inventory"));
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> KnifeAsset(TEXT("/Game/PolygonScifi/Meshes/Weapons/Accessories/SM_Wep_Knife_01.SM_Wep_Knife_01"));
+	FWeaponDetails Knife = FWeaponDetails::FWeaponDetails("Knife", KnifeAsset.Object, nullptr, 10, 0.f, 0.f, 0.f, EWeaponType::MELEE);
+	Inventory->AddItem(&Knife);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Ignore);
 
 	// We make sure the player possesses the actor, and set the basic input settings
@@ -152,13 +156,13 @@ void APlayerCharacter::Action()
 
 // EFFECTS
 // Used to tell the world that money has been collected
-void APlayerCharacter::UpdateMoney(int32 Money)
+void APlayerCharacter::PickUp(FWeaponDetails* InWeapon, int32 InMoney)
 {
-	// First we update the player's money
-	CurrentMoney += Money;
+	// First we update the player's inventory
+	Inventory->AddItem(InWeapon, InMoney);
 
-	// And then we announce the new total
-	OnMoneyUpdate.Broadcast(CurrentMoney);
+	// And then we announce the new money
+	if (InMoney != 0) OnMoneyUpdate.Broadcast(Inventory->Money);
 
 }
 // Used to tell the world a weapon has been drawn

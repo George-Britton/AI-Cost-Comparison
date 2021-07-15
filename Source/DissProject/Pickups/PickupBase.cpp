@@ -43,7 +43,7 @@ void APickupBase::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// Spin the pickup
-	PickupMeshComponent->AddLocalRotation(FRotator(0.f, SpinSpeed, 0.f));
+	RootComponent->AddLocalRotation(FRotator(0.f, SpinSpeed, 0.f));
 }
 
 // This is used to announce when the player overlaps the sphere

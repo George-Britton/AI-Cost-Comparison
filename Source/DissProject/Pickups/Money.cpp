@@ -11,7 +11,7 @@ void AMoney::Activate()
 	Super::Activate();
 
 	// We give the player the money
-	Cast<APlayerCharacter>(UGameplayStatics::GetActorOfClass(this, APlayerCharacter::StaticClass()))->UpdateMoney(Value);
+	Cast<APlayerCharacter>(UGameplayStatics::GetActorOfClass(this, APlayerCharacter::StaticClass()))->PickUp(nullptr, Value);
 
 	// And then destroy the actor
 	this->Destroy();

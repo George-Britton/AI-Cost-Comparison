@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "../System/Inventory.h"
 #include "../Pickups/PickupBase.h"
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
@@ -73,7 +74,7 @@ public:
 
 	// Variables related to the player's inventory
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
-		int32 CurrentMoney = 0;
+		UInventory* Inventory;
 
 	// Event distributors
 	// Used to announce that the action button has been pressed
@@ -118,7 +119,7 @@ public:
 
 	// EFFECTS
 	// Used to tell the world that money has been collected
-	void UpdateMoney(int32 Money);
+	void PickUp(FWeaponDetails* InWeapon = nullptr, int32 InMoney = 0);
 	// Used to tell the world a weapon has been drawn
 	void DrawWeapon();
 

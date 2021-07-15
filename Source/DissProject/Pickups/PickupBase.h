@@ -19,17 +19,20 @@ public:
 	// Sets default values for this actor's properties
 	APickupBase();
 
+	// The name of the pickup
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Appearance")
+		FName PickupName = "None";
 	// The mesh of the pickup
 	UPROPERTY(EditAnywhere, Category = "Appearance")
 		UStaticMesh* PickupMesh = nullptr;
 	UPROPERTY()
 		UStaticMeshComponent* PickupMeshComponent = nullptr;
 	UPROPERTY(EditAnywhere, Category = "Appearance")
-		float SpinSpeed = 1.f;
+		float SpinSpeed = 2.f;
 
 	// The overlap box to tell the player they are within range of the pickup
 	UPROPERTY(EditAnywhere, Category = "Interaction")
-		float PickupSphereRadius = 100.f;
+		float PickupSphereRadius = 150.f;
 	UPROPERTY(VisibleAnywhere, Category = "Interaction")
 		USphereComponent* PickupSphere = nullptr;
 
