@@ -2,6 +2,7 @@
 
 
 #include "Weapon.h"
+#include "../Characters/PlayerCharacter.h"
 
 // Default constructor
 AWeapon::AWeapon()
@@ -37,5 +38,14 @@ void AWeapon::Tick(float DeltaTime)
 // Overridden activate function
 void AWeapon::Activate()
 {
-	
+	if (OverlappedActor)
+	{
+		if (OverlappedActor->GetClass() == APlayerCharacter::StaticClass())
+		{
+			Cast<APlayerCharacter>(OverlappedActor)->PickUp(&WeaponDetails, 0);
+		}
+		//else if (OverlappedActor->GetClass() == AEnemy::StaticClass()){}
+
+		this->Destroy();
+	}
 }

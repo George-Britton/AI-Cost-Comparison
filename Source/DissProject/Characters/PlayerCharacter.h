@@ -8,12 +8,15 @@
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
 #include "GameFramework/Character.h"
+#include "../Pickups/Weapon.h"
 #include "PlayerCharacter.generated.h"
 
 // We create a new delegate type the debug message function
 DECLARE_DELEGATE_OneParam(FDebugDelegate, FString);
 // We create delegate for the toggling of boolean states
 DECLARE_DELEGATE_OneParam(FToggleState, bool);
+// We create delegate for the toggling of inventory index
+DECLARE_DELEGATE_OneParam(FToggleInventory, int32);
 // We make a delegate for when the player takes damage
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDamage, float, NewHealth);
 // We also make a delegate for when the action button is pressed
@@ -54,6 +57,16 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Camera")
 		float CameraPitchLimit = 70.f;
 
+	// Variables for the player's weapon
+	UPROPERTY()
+		UStaticMeshComponent* MeleeMesh = nullptr;
+	UPROPERTY()
+		USkeletalMeshComponent* RangedMesh = nullptr;
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+		FTranform WeaponViewportTransform;
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+		FWeaponDetails CurrentWeapon;
+
 	// Variables for the player's movement
 	UPROPERTY(EditAnywhere, Category = "Movement")
 		float RunSpeed = 1050.f;
@@ -75,6 +88,8 @@ public:
 	// Variables related to the player's inventory
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
 		UInventory* Inventory;
+	UPROPERTY()
+		int32 CurrentInventoryItem = 0;
 
 	// Event distributors
 	// Used to announce that the action button has been pressed
@@ -101,6 +116,9 @@ public:
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+	// Called to set up the inventory
+	void CreateInventory();
+
 	// INPUTS
 	// Makes the player move left or right
 	void MoveX(float AxisValue);
@@ -116,6 +134,8 @@ public:
 	void ToggleCrouch(bool Crouching);
 	// Announces the action button is pressed
 	void Action();
+	// Changes the equipped inventory item
+	void NextInventory(int32 Change);
 
 	// EFFECTS
 	// Used to tell the world that money has been collected

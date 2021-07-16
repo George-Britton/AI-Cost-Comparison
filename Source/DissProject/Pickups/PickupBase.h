@@ -35,6 +35,8 @@ public:
 		float PickupSphereRadius = 150.f;
 	UPROPERTY(VisibleAnywhere, Category = "Interaction")
 		USphereComponent* PickupSphere = nullptr;
+	UPROPERTY()
+		AActor* OverlappedActor;
 
 	// Event dispatcher for the overlaps
 	UPROPERTY(BlueprintAssignable, Category = "Events")

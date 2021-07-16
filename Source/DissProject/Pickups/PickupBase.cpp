@@ -49,6 +49,8 @@ void APickupBase::Tick(float DeltaTime)
 // This is used to announce when the player overlaps the sphere
 void APickupBase::OnSphereOverlapFunction(class UPrimitiveComponent* HitComp, class AActor* OtherActor, class UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
+	OverlappedActor = OtherActor;
+
 	if (OtherActor->GetName().Contains("Player"))
 	{
 		OnPlayerOverlap.Broadcast(this, true);

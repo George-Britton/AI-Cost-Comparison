@@ -23,11 +23,8 @@ APlayerCharacter::APlayerCharacter()
 	PlayerCamera->SetRelativeLocation(FVector(0, 0, CameraHeight));
 	DamageSoundComponent->SetupAttachment(this->RootComponent);
 	DamageSoundComponent->SetAutoActivate(false);
-	Inventory = CreateDefaultSubobject<UInventory>(TEXT("Inventory"));
-	static ConstructorHelpers::FObjectFinder<UStaticMesh> KnifeAsset(TEXT("/Game/PolygonScifi/Meshes/Weapons/Accessories/SM_Wep_Knife_01.SM_Wep_Knife_01"));
-	FWeaponDetails Knife = FWeaponDetails::FWeaponDetails("Knife", KnifeAsset.Object, nullptr, 10, 0.f, 0.f, 0.f, EWeaponType::MELEE);
-	Inventory->AddItem(&Knife);
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Ignore);
+	CreateInventory();
 
 	// We make sure the player possesses the actor, and set the basic input settings
 	AutoPossessPlayer = EAutoReceiveInput::Player0;
@@ -54,6 +51,11 @@ void APlayerCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 	
+	// Give the components the correct weapon transforms
+	RangedMesh->AddLocalTransform(WeaponViewportTransform);
+	MeleeMesh->AddLocalTransform(WeaponViewportTransform);
+
+	NextInventory(0);
 }
 
 // Called every frame
@@ -73,13 +75,33 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComponent->BindAxis("MoveForward", this, &APlayerCharacter::MoveY);
 	InputComponent->BindAxis("RotateX", this, &APlayerCharacter::RotateX);
 	InputComponent->BindAxis("RotateY", this, &APlayerCharacter::RotateY);
+	InputComponent->BindAction<FToggleInventory>("NextInventory", EInputEvent::IE_Pressed, this, &APlayerCharacter::NextInventory, 1);
+	InputComponent->BindAction<FToggleInventory>("PreviousInventory", EInputEvent::IE_Pressed, this, &APlayerCharacter::NextInventory, -1);
 	InputComponent->BindAction<FToggleState>("Run", EInputEvent::IE_Pressed, this, &APlayerCharacter::ToggleRun, true);
 	InputComponent->BindAction<FToggleState>("Run", EInputEvent::IE_Released, this, &APlayerCharacter::ToggleRun, false);
 	InputComponent->BindAction<FToggleState>("Crouch", EInputEvent::IE_Pressed, this, &APlayerCharacter::ToggleCrouch, true);
 	InputComponent->BindAction<FToggleState>("Crouch", EInputEvent::IE_Released, this, &APlayerCharacter::ToggleCrouch, false);
 	InputComponent->BindAction("Action", EInputEvent::IE_Released, this, &APlayerCharacter::Action);
-	//InputComponent->BindAction<FToggleState>("Fire", EInputEvent::IE_Pressed, Gun, &UGun::ToggleFire, true);
-	//InputComponent->BindAction<FToggleState>("Fire", EInputEvent::IE_Released, Gun, &UGun::ToggleFire, false);
+	//InputComponent->BindAction<FToggleState>("Fire", EInputEvent::IE_Pressed, Gun, &AWeapon::Attack, true);
+	//InputComponent->BindAction<FToggleState>("Fire", EInputEvent::IE_Released, Gun, &AWeapon::Attack, false);
+}
+
+// Called to set up the inventory
+void APlayerCharacter::CreateInventory()
+{
+	// Create the meshes components and add them to root
+	MeleeMesh = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Melee Mesh"));
+	RangedMesh = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Ranged Mesh"));
+	MeleeMesh->SetupAttachment(this->PlayerCamera);
+	RangedMesh->SetupAttachment(this->PlayerCamera);
+
+	// Create the inventory object
+	Inventory = CreateDefaultSubobject<UInventory>(TEXT("Inventory"));
+
+	// Create a knife weapon and add it to the inventory
+	static ConstructorHelpers::FObjectFinder<UStaticMesh> KnifeAsset(TEXT("/Game/PolygonScifi/Meshes/Weapons/Accessories/SM_Wep_Knife_01.SM_Wep_Knife_01"));
+	FWeaponDetails Knife = FWeaponDetails::FWeaponDetails("Knife", KnifeAsset.Object, nullptr, 10, 0.f, 0.f, 0.f, EWeaponType::MELEE);
+	Inventory->AddItem(&Knife);
 }
 
 // INPUTS
@@ -152,6 +174,38 @@ void APlayerCharacter::Action()
 
 	// And then we check if the player is overlapping, and if so, we activate its effect
 	if (OverlappedPickup) OverlappedPickup->Activate();
+}
+// Changes the equipped inventory item
+void APlayerCharacter::NextInventory(int32 Change)
+{
+	if (Change) PrintDebugMessage("NextInventory");
+
+	// Change the current item
+	if (Change > 0) ++CurrentInventoryItem;
+	if (Change < 0) --CurrentInventoryItem;
+
+	// Wrap the item around the valid indecies
+	if (CurrentInventoryItem < 0) CurrentInventoryItem = Inventory->Inventory.Num() - 1;
+	if (CurrentInventoryItem == Inventory->Inventory.Num()) CurrentInventoryItem = 0;
+
+	// Get the inventory item
+	CurrentWeapon = Inventory->Inventory[CurrentInventoryItem];
+
+	// Set the mesh of the weapon
+	switch (CurrentWeapon.Type)
+	{
+	case EWeaponType::MELEE:
+		MeleeMesh->SetStaticMesh(CurrentWeapon.MeleeMesh);
+		RangedMesh->SetVisibility(false);
+		MeleeMesh->SetVisibility(true);
+		break;
+	case EWeaponType::RANGED:
+		RangedMesh->SetSkeletalMesh(CurrentWeapon.RangedMesh);
+		RangedMesh->SetVisibility(true);
+		MeleeMesh->SetVisibility(false);
+		break;
+	default: break;
+	}
 }
 
 // EFFECTS
