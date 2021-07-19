@@ -8,6 +8,7 @@
 #include "Camera/CameraComponent.h"
 #include "Components/AudioComponent.h"
 #include "GameFramework/Character.h"
+#include "Particles/ParticleSystemComponent.h"
 #include "../Pickups/Weapon.h"
 #include "PlayerCharacter.generated.h"
 
@@ -24,7 +25,11 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnActionPressed);
 // We announce a change in wealth
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnMoneyUpdate, int32, NewMoney);
 // We announce that a weapon has been drawn
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponDraw, bool, WeaponDrawn);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnWeaponDraw, FWeaponDetails, Weapon);
+// We announce that a weapon has been drawn
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAmmoUpdate, int32, NewAmmo);
+// We announce a pickup
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnPickup, FWeaponDetails, WeaponDetails, int32, Value);
 // We finally make a delegate for if the player dies
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnPlayerDeath);
 
@@ -63,9 +68,23 @@ public:
 	UPROPERTY()
 		USkeletalMeshComponent* RangedMesh = nullptr;
 	UPROPERTY(EditAnywhere, Category = "Weapon")
-		FTranform WeaponViewportTransform;
+		FTransform WeaponViewportTransform;
 	UPROPERTY(EditAnywhere, Category = "Weapon")
 		FWeaponDetails CurrentWeapon;
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+		USoundBase* MeleeSound = nullptr;
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+		USoundBase* RangedSound = nullptr;
+	UPROPERTY()
+		UAudioComponent* AttackSoundComponent = nullptr;
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+		UParticleSystem* BloodParticles = nullptr;
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+		UParticleSystem* GunshotParticles = nullptr;
+	UPROPERTY()
+		UParticleSystemComponent* GunshotParticleSystem = nullptr;
+	UPROPERTY()
+		UParticleSystemComponent* BloodParticleSystem = nullptr;
 
 	// Variables for the player's movement
 	UPROPERTY(EditAnywhere, Category = "Movement")
@@ -91,6 +110,12 @@ public:
 	UPROPERTY()
 		int32 CurrentInventoryItem = 0;
 
+	// Variables used for the player's attacks
+	UPROPERTY()
+		bool Attacking = false;
+	UPROPERTY()
+		float AttackTimer = 0.f;
+
 	// Event distributors
 	// Used to announce that the action button has been pressed
 	UPROPERTY(BlueprintAssignable, Category = "Events")
@@ -101,6 +126,12 @@ public:
 	// Used to announce that the player has changed weapon
 	UPROPERTY(BlueprintAssignable, Category = "Events")
 		FOnWeaponDraw OnWeaponDraw;
+	// Used to announce that the player's ammo has updated
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+		FOnAmmoUpdate OnAmmoUpdate;
+	// Used to announce a pickup
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+		FOnPickup OnPickup;
 
 protected:
 	// Called when the game starts or when spawned
@@ -134,14 +165,16 @@ public:
 	void ToggleCrouch(bool Crouching);
 	// Announces the action button is pressed
 	void Action();
+	// Attacks with the equipped weapon
+	void Attack(bool IsAttacking);
 	// Changes the equipped inventory item
 	void NextInventory(int32 Change);
 
 	// EFFECTS
 	// Used to tell the world that money has been collected
 	void PickUp(FWeaponDetails* InWeapon = nullptr, int32 InMoney = 0);
-	// Used to tell the world a weapon has been drawn
-	void DrawWeapon();
+	// Used to attack the world
+	void SendAttack(EWeaponType WeaponType);
 
 	// ATTACKS
 	// Used to tell the player they have been attacked by a zombie

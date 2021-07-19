@@ -2,6 +2,7 @@
 
 
 #include "PickupBase.h"
+#include "../Characters/PlayerCharacter.h"
 
 // Sets default values
 APickupBase::APickupBase()
@@ -34,7 +35,6 @@ void APickupBase::BeginPlay()
 	
 	// Here we assign the overlap sphere to register the player overlapping
 	PickupSphere->OnComponentBeginOverlap.AddDynamic(this, &APickupBase::OnSphereOverlapFunction);
-	PickupSphere->OnComponentEndOverlap.AddDynamic(this, &APickupBase::OnSphereEndOverlapFunction);
 }
 
 // Called every frame
@@ -50,24 +50,5 @@ void APickupBase::Tick(float DeltaTime)
 void APickupBase::OnSphereOverlapFunction(class UPrimitiveComponent* HitComp, class AActor* OtherActor, class UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	OverlappedActor = OtherActor;
-
-	if (OtherActor->GetName().Contains("Player"))
-	{
-		OnPlayerOverlap.Broadcast(this, true);
-	}
-}
-
-// This is used to announce when the player stops overlapping the sphere
-void APickupBase::OnSphereEndOverlapFunction(class UPrimitiveComponent* HitComp, class AActor* OtherActor, class UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
-{
-	if (OtherActor->GetName().Contains("Player"))
-	{
-		OnPlayerOverlap.Broadcast(this, false);
-	}
-}
-
-// Override to activate the pickup ability, such as a gun equip or money collect
-void APickupBase::Activate()
-{
-	OnPlayerOverlap.Broadcast(this, false);
+	Activate();
 }

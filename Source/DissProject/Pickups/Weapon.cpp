@@ -29,23 +29,17 @@ void AWeapon::OnConstruction(const FTransform& Transform)
 	}
 }
 
-// Called every frame
-void AWeapon::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-}
-
 // Overridden activate function
 void AWeapon::Activate()
 {
-	if (OverlappedActor)
-	{
-		if (OverlappedActor->GetClass() == APlayerCharacter::StaticClass())
-		{
-			Cast<APlayerCharacter>(OverlappedActor)->PickUp(&WeaponDetails, 0);
-		}
-		//else if (OverlappedActor->GetClass() == AEnemy::StaticClass()){}
+	Super::Activate();
 
+	if (OverlappedActor->GetName().Contains("Player"))
+	{
+		// We give the player the money
+		Cast<APlayerCharacter>(UGameplayStatics::GetActorOfClass(this, APlayerCharacter::StaticClass()))->PickUp(&WeaponDetails, 0);
+
+		// And then destroy the actor
 		this->Destroy();
 	}
 }

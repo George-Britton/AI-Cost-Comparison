@@ -18,11 +18,22 @@ APlayerCharacter::APlayerCharacter()
 	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 	DamageSoundComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("Damage Sound Component"));
+	AttackSoundComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("Attack Sound Component"));
 	PlayerCamera = CreateDefaultSubobject<UCameraComponent>(TEXT("Player Camera"));
 	PlayerCamera->SetupAttachment(this->RootComponent);
 	PlayerCamera->SetRelativeLocation(FVector(0, 0, CameraHeight));
 	DamageSoundComponent->SetupAttachment(this->RootComponent);
 	DamageSoundComponent->SetAutoActivate(false);
+	AttackSoundComponent->SetupAttachment(this->RootComponent);
+	AttackSoundComponent->SetAutoActivate(false);
+	GunshotParticleSystem = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("Gunshot Particles"));
+	GunshotParticleSystem->SetupAttachment(this->RootComponent);
+	GunshotParticleSystem->bAutoManageAttachment = true;
+	GunshotParticleSystem->bAutoActivate = false;
+	BloodParticleSystem = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("Bloodshot Particles"));
+	BloodParticleSystem->SetupAttachment(this->RootComponent);
+	BloodParticleSystem->bAutoManageAttachment = true;
+	BloodParticleSystem->bAutoActivate = false;
 	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Ignore);
 	CreateInventory();
 
@@ -63,6 +74,15 @@ void APlayerCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// First we reduce the attack timer
+	if (AttackTimer > 0.f) AttackTimer -= DeltaTime;
+
+	// We use the timer to tell the player when to attack
+	if (Attacking && AttackTimer <= 0.f)
+	{
+		SendAttack(CurrentWeapon.Type);
+	}
+
 }
 
 // Called to bind functionality to input
@@ -79,11 +99,11 @@ void APlayerCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCom
 	InputComponent->BindAction<FToggleInventory>("PreviousInventory", EInputEvent::IE_Pressed, this, &APlayerCharacter::NextInventory, -1);
 	InputComponent->BindAction<FToggleState>("Run", EInputEvent::IE_Pressed, this, &APlayerCharacter::ToggleRun, true);
 	InputComponent->BindAction<FToggleState>("Run", EInputEvent::IE_Released, this, &APlayerCharacter::ToggleRun, false);
-	InputComponent->BindAction<FToggleState>("Crouch", EInputEvent::IE_Pressed, this, &APlayerCharacter::ToggleCrouch, true);
-	InputComponent->BindAction<FToggleState>("Crouch", EInputEvent::IE_Released, this, &APlayerCharacter::ToggleCrouch, false);
+	InputComponent->BindAction<FToggleState>("CrouchDown", EInputEvent::IE_Pressed, this, &APlayerCharacter::ToggleCrouch, true);
+	InputComponent->BindAction<FToggleState>("CrouchDown", EInputEvent::IE_Released, this, &APlayerCharacter::ToggleCrouch, false);
+	InputComponent->BindAction<FToggleState>("Attack", EInputEvent::IE_Pressed, this, &APlayerCharacter::Attack, true);
+	InputComponent->BindAction<FToggleState>("Attack", EInputEvent::IE_Released, this, &APlayerCharacter::Attack, false);
 	InputComponent->BindAction("Action", EInputEvent::IE_Released, this, &APlayerCharacter::Action);
-	//InputComponent->BindAction<FToggleState>("Fire", EInputEvent::IE_Pressed, Gun, &AWeapon::Attack, true);
-	//InputComponent->BindAction<FToggleState>("Fire", EInputEvent::IE_Released, Gun, &AWeapon::Attack, false);
 }
 
 // Called to set up the inventory
@@ -175,11 +195,14 @@ void APlayerCharacter::Action()
 	// And then we check if the player is overlapping, and if so, we activate its effect
 	if (OverlappedPickup) OverlappedPickup->Activate();
 }
+// Attacks with the equipped weapon
+void APlayerCharacter::Attack(bool IsAttacking)
+{
+	Attacking = IsAttacking;
+}
 // Changes the equipped inventory item
 void APlayerCharacter::NextInventory(int32 Change)
 {
-	if (Change) PrintDebugMessage("NextInventory");
-
 	// Change the current item
 	if (Change > 0) ++CurrentInventoryItem;
 	if (Change < 0) --CurrentInventoryItem;
@@ -203,9 +226,13 @@ void APlayerCharacter::NextInventory(int32 Change)
 		RangedMesh->SetSkeletalMesh(CurrentWeapon.RangedMesh);
 		RangedMesh->SetVisibility(true);
 		MeleeMesh->SetVisibility(false);
+		GunshotParticleSystem->AutoAttachSocketName = "Barrel";
 		break;
 	default: break;
 	}
+
+	// And then tell the world what weapon the player is using
+	OnWeaponDraw.Broadcast(CurrentWeapon);
 }
 
 // EFFECTS
@@ -216,13 +243,51 @@ void APlayerCharacter::PickUp(FWeaponDetails* InWeapon, int32 InMoney)
 	Inventory->AddItem(InWeapon, InMoney);
 
 	// And then we announce the new money
-	if (InMoney != 0) OnMoneyUpdate.Broadcast(Inventory->Money);
-
+	if (InMoney != 0)
+	{
+		OnMoneyUpdate.Broadcast(Inventory->Money);
+		OnPickup.Broadcast(nullptr, InMoney);
+	}
+	else
+	{
+		OnPickup.Broadcast(InWeapon, 0);
+	}
 }
-// Used to tell the world a weapon has been drawn
-void APlayerCharacter::DrawWeapon()
+// Used to attack the world
+void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 {
-	OnWeaponDraw.Broadcast(true);
+	// These are the parameters for the ray trace
+	FHitResult HitEnemy;
+	FVector RayStart = PlayerCamera->GetComponentLocation();
+	FVector RayEnd = RayStart + (PlayerCamera->GetForwardVector() * CurrentWeapon.Range);
+	FCollisionQueryParams CollisionParameters;
+	CollisionParameters.AddIgnoredActor(this);
+
+	// This makes the weapon seem like it's being used, with the sound and particles
+	switch (WeaponType)
+	{
+	case EWeaponType::MELEE:
+		// Here we do a ray trace to see if an enemy is in the weapon's firing line
+		if (GetWorld()->LineTraceSingleByChannel(HitEnemy, RayStart, RayEnd, ECC_Visibility, CollisionParameters))
+		{
+			/*AActor* EnemyTest = Cast<AZombie>(HitEnemy.GetActor());
+			if (ZombieTest)
+			{
+				BloodParticleSystem->SetWorldLocation(HitEnemy.ImpactPoint, false, nullptr, ETeleportType::None);
+				BloodParticleSystem->Activate(true);
+				ZombieTest->RecieveAttack(Damage);
+			}*/
+		}
+		AttackSoundComponent->SetSound(MeleeSound); GunshotParticleSystem->Activate(true);
+		break;
+	case EWeaponType::RANGED:
+		//GetWorld()->SpawnActor<ALaser>();
+		AttackSoundComponent->SetSound(RangedSound);
+		break;
+	default: break;
+	}
+	AttackSoundComponent->Play();
+	AttackTimer = CurrentWeapon.RateOfFire;
 }
 
 // ATTACKS

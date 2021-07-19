@@ -4,14 +4,12 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "Kismet/GameplayStatics.h"
 #include "Components/SphereComponent.h"
 #include "PickupBase.generated.h"
 
-// Event dispatcher for the overlapping of the player and the pickup
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FToggleOverlap, class APickupBase*, Pickup, bool, IsOverlapping);
-
 UCLASS()
-class DISSPROJECT_API APickupBase : public AActor
+class DISSPROJECT_API APickupBase : public AActor	
 {
 	GENERATED_BODY()
 	
@@ -38,10 +36,6 @@ public:
 	UPROPERTY()
 		AActor* OverlappedActor;
 
-	// Event dispatcher for the overlaps
-	UPROPERTY(BlueprintAssignable, Category = "Events")
-		FToggleOverlap OnPlayerOverlap;
-
 protected:
 	// Called when a value changes
 	void OnConstruction(const FTransform& Transform) override;
@@ -56,11 +50,8 @@ public:
 	// This is used to announce when the player overlaps the sphere
 	UFUNCTION()
 		void OnSphereOverlapFunction(class UPrimitiveComponent* HitComp, class AActor* OtherActor, class UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult);
-	// This is used to announce when the player stops overlapping the sphere
-	UFUNCTION()
-		void OnSphereEndOverlapFunction(class UPrimitiveComponent* HitComp, class AActor* OtherActor, class UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
-
+	
 	// Override to activate the pickup ability, such as a gun equip or money collect
 	UFUNCTION(BlueprintCallable, Category = "Events")
-		virtual void Activate();
+		virtual void Activate() {};
 };

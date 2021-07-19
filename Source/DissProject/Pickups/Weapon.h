@@ -106,9 +106,6 @@ protected:
 	// Called when a value changes
 	void OnConstruction(const FTransform& Transform) override;
 
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
 public:
 	// Overridden activate function
 	void Activate() override;

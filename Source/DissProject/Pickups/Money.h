@@ -22,10 +22,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Value")
 		int32 Value = 10;
 
-protected:
-	// Called every frame
-	virtual void Tick(float DeltaTime) override;
-
 public:
 	// Overridden activate function
 	void Activate() override;
