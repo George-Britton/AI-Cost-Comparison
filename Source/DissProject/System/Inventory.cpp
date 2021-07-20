@@ -22,20 +22,20 @@ void UInventory::BeginPlay()
 }
 
 // Called to add a pickup
-void UInventory::AddItem(FWeaponDetails* InWeapon, uint8 InMoney)
+void UInventory::AddItem(FWeaponDetails InWeapon, uint8 InMoney)
 {
-	if (InWeapon)
+	if (InMoney == 0)
 	{
 		// We first loop through the inventory to see if we already have the weapon
 		bool HasWeapon = false;
 		for (auto& Weapon : Inventory)
 		{
-			if (Weapon.Name == InWeapon->Name)
+			if (Weapon.Name == InWeapon.Name)
 			{
 				// if the weapon is ranged, just increase the ammo
 				if (Weapon.Type == EWeaponType::RANGED)
 				{
-					Weapon.Ammo += InWeapon->Ammo;
+					Weapon.Ammo += InWeapon.Ammo;
 				}
 
 				// Mark the flag as true

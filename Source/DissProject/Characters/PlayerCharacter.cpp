@@ -4,6 +4,7 @@
 #include "PlayerCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "Laser.h"
 
 // global constants
 const static float MAX_CAMERA_HEIGHT = 100.f;
@@ -26,10 +27,6 @@ APlayerCharacter::APlayerCharacter()
 	DamageSoundComponent->SetAutoActivate(false);
 	AttackSoundComponent->SetupAttachment(this->RootComponent);
 	AttackSoundComponent->SetAutoActivate(false);
-	GunshotParticleSystem = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("Gunshot Particles"));
-	GunshotParticleSystem->SetupAttachment(this->RootComponent);
-	GunshotParticleSystem->bAutoManageAttachment = true;
-	GunshotParticleSystem->bAutoActivate = false;
 	BloodParticleSystem = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("Bloodshot Particles"));
 	BloodParticleSystem->SetupAttachment(this->RootComponent);
 	BloodParticleSystem->bAutoManageAttachment = true;
@@ -121,7 +118,7 @@ void APlayerCharacter::CreateInventory()
 	// Create a knife weapon and add it to the inventory
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> KnifeAsset(TEXT("/Game/PolygonScifi/Meshes/Weapons/Accessories/SM_Wep_Knife_01.SM_Wep_Knife_01"));
 	FWeaponDetails Knife = FWeaponDetails::FWeaponDetails("Knife", KnifeAsset.Object, nullptr, 10, 0.f, 0.f, 0.f, EWeaponType::MELEE);
-	Inventory->AddItem(&Knife);
+	Inventory->AddItem(Knife);
 }
 
 // INPUTS
@@ -203,6 +200,9 @@ void APlayerCharacter::Attack(bool IsAttacking)
 // Changes the equipped inventory item
 void APlayerCharacter::NextInventory(int32 Change)
 {
+	// First we save the current weapon
+	Inventory->Inventory[CurrentInventoryItem].Ammo = CurrentWeapon.Ammo;
+
 	// Change the current item
 	if (Change > 0) ++CurrentInventoryItem;
 	if (Change < 0) --CurrentInventoryItem;
@@ -226,7 +226,6 @@ void APlayerCharacter::NextInventory(int32 Change)
 		RangedMesh->SetSkeletalMesh(CurrentWeapon.RangedMesh);
 		RangedMesh->SetVisibility(true);
 		MeleeMesh->SetVisibility(false);
-		GunshotParticleSystem->AutoAttachSocketName = "Barrel";
 		break;
 	default: break;
 	}
@@ -237,7 +236,7 @@ void APlayerCharacter::NextInventory(int32 Change)
 
 // EFFECTS
 // Used to tell the world that money has been collected
-void APlayerCharacter::PickUp(FWeaponDetails* InWeapon, int32 InMoney)
+void APlayerCharacter::PickUp(FWeaponDetails InWeapon, int32 InMoney)
 {
 	// First we update the player's inventory
 	Inventory->AddItem(InWeapon, InMoney);
@@ -246,7 +245,7 @@ void APlayerCharacter::PickUp(FWeaponDetails* InWeapon, int32 InMoney)
 	if (InMoney != 0)
 	{
 		OnMoneyUpdate.Broadcast(Inventory->Money);
-		OnPickup.Broadcast(nullptr, InMoney);
+		OnPickup.Broadcast(FWeaponDetails::FWeaponDetails(), InMoney);
 	}
 	else
 	{
@@ -263,6 +262,12 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 	FCollisionQueryParams CollisionParameters;
 	CollisionParameters.AddIgnoredActor(this);
 
+	// These are the parameters for the laser
+	FActorSpawnParameters SpawnParams;
+	FVector SpawnLoc = RangedMesh->GetSocketLocation("Gun");
+	FRotator SpawnRot = FRotator(0, 0, 0);
+	ALaser* Laser = nullptr;
+
 	// This makes the weapon seem like it's being used, with the sound and particles
 	switch (WeaponType)
 	{
@@ -278,16 +283,24 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 				ZombieTest->RecieveAttack(Damage);
 			}*/
 		}
-		AttackSoundComponent->SetSound(MeleeSound); GunshotParticleSystem->Activate(true);
+		AttackSoundComponent->SetSound(MeleeSound);
+		AttackSoundComponent->Play();
+		AttackTimer = CurrentWeapon.RateOfFire;
 		break;
 	case EWeaponType::RANGED:
-		//GetWorld()->SpawnActor<ALaser>();
-		AttackSoundComponent->SetSound(RangedSound);
+		if (CurrentWeapon.Ammo > 0)
+		{
+			Laser = GetWorld()->SpawnActor<ALaser>(ALaser::StaticClass(), SpawnLoc, SpawnRot, SpawnParams);
+			Laser->SetupLaser(CurrentWeapon.Range, CurrentWeapon.Damage, PlayerCamera->GetForwardVector(), 100.f);
+			AttackSoundComponent->SetSound(RangedSound);
+			--CurrentWeapon.Ammo;
+			OnAmmoUpdate.Broadcast(CurrentWeapon.Ammo);
+			AttackSoundComponent->Play();
+			AttackTimer = CurrentWeapon.RateOfFire;
+		}
 		break;
 	default: break;
 	}
-	AttackSoundComponent->Play();
-	AttackTimer = CurrentWeapon.RateOfFire;
 }
 
 // ATTACKS

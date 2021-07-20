@@ -16,7 +16,7 @@ class DISSPROJECT_API AMoney : public APickupBase
 	
 public:
 	// Default constructor
-	AMoney() {};
+	AMoney();
 
 	// The value of the money pickup
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Value")

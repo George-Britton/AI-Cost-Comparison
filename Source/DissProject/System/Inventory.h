@@ -29,5 +29,5 @@ protected:
 
 public:
 	// Called to add a pickup
-	void AddItem(FWeaponDetails* InWeapon = nullptr, uint8 InMoney = 0);
+	void AddItem(FWeaponDetails InWeapon, uint8 InMoney = 0);
 };

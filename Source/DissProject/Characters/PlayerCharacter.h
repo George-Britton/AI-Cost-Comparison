@@ -79,10 +79,6 @@ public:
 		UAudioComponent* AttackSoundComponent = nullptr;
 	UPROPERTY(EditAnywhere, Category = "Weapon")
 		UParticleSystem* BloodParticles = nullptr;
-	UPROPERTY(EditAnywhere, Category = "Weapon")
-		UParticleSystem* GunshotParticles = nullptr;
-	UPROPERTY()
-		UParticleSystemComponent* GunshotParticleSystem = nullptr;
 	UPROPERTY()
 		UParticleSystemComponent* BloodParticleSystem = nullptr;
 
@@ -172,7 +168,8 @@ public:
 
 	// EFFECTS
 	// Used to tell the world that money has been collected
-	void PickUp(FWeaponDetails* InWeapon = nullptr, int32 InMoney = 0);
+	UFUNCTION(BlueprintCallable, Category = "Events")
+		void PickUp(FWeaponDetails InWeapon, int32 InMoney = 0);
 	// Used to attack the world
 	void SendAttack(EWeaponType WeaponType);
 

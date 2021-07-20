@@ -37,7 +37,7 @@ void AWeapon::Activate()
 	if (OverlappedActor->GetName().Contains("Player"))
 	{
 		// We give the player the money
-		Cast<APlayerCharacter>(UGameplayStatics::GetActorOfClass(this, APlayerCharacter::StaticClass()))->PickUp(&WeaponDetails, 0);
+		Cast<APlayerCharacter>(UGameplayStatics::GetActorOfClass(this, APlayerCharacter::StaticClass()))->PickUp(WeaponDetails, 0);
 
 		// And then destroy the actor
 		this->Destroy();
