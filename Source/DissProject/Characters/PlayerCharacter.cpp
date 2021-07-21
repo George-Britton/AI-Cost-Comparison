@@ -61,6 +61,7 @@ void APlayerCharacter::BeginPlay()
 	
 	// Give the components the correct weapon transforms
 	RangedMesh->AddLocalTransform(WeaponViewportTransform);
+	RangedMesh->AddLocalRotation(FRotator(0.f, 90.f, 0.f));
 	MeleeMesh->AddLocalTransform(WeaponViewportTransform);
 
 	NextInventory(0);
@@ -74,8 +75,12 @@ void APlayerCharacter::Tick(float DeltaTime)
 	// First we reduce the attack timer
 	if (AttackTimer > 0.f) AttackTimer -= DeltaTime;
 
+	// And then reduce the melee mesh cooldown
+	if (MeleeCooldown > 0.f) MeleeCooldown -= DeltaTime;
+	else if (!IsMeleeAttacking) MeleeMesh->SetRelativeRotation(WeaponViewportTransform.GetRotation().Rotator());
+
 	// We use the timer to tell the player when to attack
-	if (Attacking && AttackTimer <= 0.f)
+	if (Attacking && AttackTimer <= 0.f && CurrentWeapon.Type == EWeaponType::RANGED)
 	{
 		SendAttack(CurrentWeapon.Type);
 	}
@@ -117,7 +122,7 @@ void APlayerCharacter::CreateInventory()
 
 	// Create a knife weapon and add it to the inventory
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> KnifeAsset(TEXT("/Game/PolygonScifi/Meshes/Weapons/Accessories/SM_Wep_Knife_01.SM_Wep_Knife_01"));
-	FWeaponDetails Knife = FWeaponDetails::FWeaponDetails("Knife", KnifeAsset.Object, nullptr, 10, 0.f, 0.f, 0.f, EWeaponType::MELEE);
+	FWeaponDetails Knife = FWeaponDetails::FWeaponDetails("Knife", KnifeAsset.Object, nullptr, 10, 0.1f, 0.f, 0.f, EWeaponType::MELEE);
 	Inventory->AddItem(Knife);
 }
 
@@ -195,7 +200,24 @@ void APlayerCharacter::Action()
 // Attacks with the equipped weapon
 void APlayerCharacter::Attack(bool IsAttacking)
 {
-	Attacking = IsAttacking;
+	if (IsAttacking)
+	{
+		switch (CurrentWeapon.Type)
+		{
+		case EWeaponType::MELEE: if (MeleeCooldown <= 0.f) SendAttack(EWeaponType::MELEE); IsMeleeAttacking = true;  break;
+		case EWeaponType::RANGED: Attacking = true; break;
+		default: break;
+		}
+	}
+	else
+	{
+		switch (CurrentWeapon.Type)
+		{
+		case EWeaponType::MELEE: IsMeleeAttacking = false;
+		case EWeaponType::RANGED: Attacking = false; break;
+		default: break;
+		}
+	}
 }
 // Changes the equipped inventory item
 void APlayerCharacter::NextInventory(int32 Change)
@@ -272,16 +294,21 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 	switch (WeaponType)
 	{
 	case EWeaponType::MELEE:
+		// First we swing the mesh
+		MeleeCooldown = CurrentWeapon.RateOfFire;
+		MeleeMesh->SetRelativeRotation(WeaponViewportTransform.GetRotation().Rotator() + FRotator(0.f, 0.f, 90.f));
+
 		// Here we do a ray trace to see if an enemy is in the weapon's firing line
 		if (GetWorld()->LineTraceSingleByChannel(HitEnemy, RayStart, RayEnd, ECC_Visibility, CollisionParameters))
 		{
-			/*AActor* EnemyTest = Cast<AZombie>(HitEnemy.GetActor());
-			if (ZombieTest)
+
+			AActor* EnemyTest = Cast<AActor>(HitEnemy.GetActor());
+			if (EnemyTest)
 			{
 				BloodParticleSystem->SetWorldLocation(HitEnemy.ImpactPoint, false, nullptr, ETeleportType::None);
 				BloodParticleSystem->Activate(true);
-				ZombieTest->RecieveAttack(Damage);
-			}*/
+				//EnemyTest->RecieveAttack(Damage);
+			}
 		}
 		AttackSoundComponent->SetSound(MeleeSound);
 		AttackSoundComponent->Play();

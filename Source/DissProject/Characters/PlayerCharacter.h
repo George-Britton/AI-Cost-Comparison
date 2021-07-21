@@ -81,6 +81,10 @@ public:
 		UParticleSystem* BloodParticles = nullptr;
 	UPROPERTY()
 		UParticleSystemComponent* BloodParticleSystem = nullptr;
+	UPROPERTY()
+		float MeleeCooldown = 0.f;
+	UPROPERTY()
+		bool IsMeleeAttacking = false;
 
 	// Variables for the player's movement
 	UPROPERTY(EditAnywhere, Category = "Movement")

@@ -27,24 +27,27 @@ void UInventory::AddItem(FWeaponDetails InWeapon, uint8 InMoney)
 	if (InMoney == 0)
 	{
 		// We first loop through the inventory to see if we already have the weapon
-		bool HasWeapon = false;
-		for (auto& Weapon : Inventory)
+		if (Inventory.Num() > 0)
 		{
-			if (Weapon.Name == InWeapon.Name)
+			bool HasWeapon = false;
+			for (auto& Weapon : Inventory)
 			{
-				// if the weapon is ranged, just increase the ammo
-				if (Weapon.Type == EWeaponType::RANGED)
+				if (Weapon.Name == InWeapon.Name)
 				{
-					Weapon.Ammo += InWeapon.Ammo;
+					// if the weapon is ranged, just increase the ammo
+					if (Weapon.Type == EWeaponType::RANGED)
+					{
+						Weapon.Ammo += InWeapon.Ammo;
+					}
+
+					// Mark the flag as true
+					HasWeapon = true;
+					break;
 				}
-
-				// Mark the flag as true
-				HasWeapon = true;
-				break;
 			}
+			if (!HasWeapon) Inventory.Add(FWeaponDetails::FWeaponDetails(InWeapon));
 		}
-
-		if (!HasWeapon) Inventory.Add(FWeaponDetails::FWeaponDetails(InWeapon));
+		else Inventory.Add(FWeaponDetails::FWeaponDetails(InWeapon));
 	}
 
 	// Add the input money to the owned money, doesn't matter if 0
