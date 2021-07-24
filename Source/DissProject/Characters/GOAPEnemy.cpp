@@ -25,6 +25,22 @@ void AGOAPEnemy::Tick(float DeltaTime)
 
 }
 
+// Called to create a plan of actions
+TArray<FAction> AGOAPEnemy::Formulate()
+{
+	TArray<FAction> outputAction;
+	TArray<FGOAPState> outputState;
+	outputState.Init(FGOAPState::FGOAPState(), 1);
+	outputAction.Init(FAction::FAction(&outputState, EStateCase::MAX, &outputState), 1);
+	return outputAction;
+}
+
+// Called to ensure the current plan is valid
+bool AGOAPEnemy::ValidatePlan(TArray<FAction> TestPlan)
+{
+	return false;
+}
+
 // Called to bind functionality to input
 void AGOAPEnemy::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
 {
