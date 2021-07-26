@@ -4,6 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "../System/Inventory.h"
+#include "../Pickups/Weapon.h"
+#include "GOAPAIController.h"
+#include "Components/AudioComponent.h"
 #include "GOAPEnemy.generated.h"
 
 // Enum to tell the state what variable type it should be checking for true
@@ -39,6 +43,10 @@ struct FGOAPState
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
 		EVariableType VariableType;
 
+	// The world query done to test the goal state
+	UPROPERTY(VisibleAnywhere, Category = "GOAP")
+		EStateCase StateCase;
+
 	// The actor that we are checking the state of
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
 		AActor* Subject;
@@ -55,23 +63,19 @@ struct FGOAPState
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
 		int32 IntValue;
 
-	// The string value we might check
-	UPROPERTY(VisibleAnywhere, Category = "GOAP")
-		FString StringValue;
-
 	// The vector value we might check
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
 		FVector VectorValue;
 
 	// Default constructor
-	FGOAPState(EVariableType InVariableType = EVariableType::MAX, AActor* InSubject = nullptr, bool InBoolValue = false, float InFloatValue = 0.f, int32 InIntValue = 0, FString InStringValue = "", FVector InVectorValue = FVector(0.f, 0.f, 0.f))
+	FGOAPState(EVariableType InVariableType = EVariableType::MAX, EStateCase InStateCase = EStateCase::MAX, AActor* InSubject = nullptr, bool InBoolValue = false, float InFloatValue = 0.f, int32 InIntValue = 0, FVector InVectorValue = FVector(0.f, 0.f, 0.f))
 	{
 		VariableType = InVariableType;
+		StateCase = InStateCase,
 		Subject = InSubject;
 		BoolValue = InBoolValue;
 		FloatValue = InFloatValue;
 		IntValue = InIntValue;
-		StringValue = InStringValue;
 		VectorValue = InVectorValue;
 	}
 
@@ -128,10 +132,6 @@ struct FGOAPState
 	{
 		return IntValue == IntValue;
 	}
-	bool operator==(FString InString)
-	{
-		return StringValue == StringValue;
-	}
 	bool operator==(FVector InVector)
 	{
 		return VectorValue == VectorValue;
@@ -152,18 +152,20 @@ struct FAction
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
 		EStateCase StateCase;
 
+	// The action state to take in order to achieve the goal
+	UPROPERTY(VisibleAnywhere, Category = "GOAP")
+		FGOAPState Action;
+
 	// The world variables that must be true to undertake the action
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
 		TArray<FGOAPState> Preconditions;
 
-	FAction()
-	{}
-
 	// Default constructor
-	FAction(TArray<FGOAPState>* InEffects, EStateCase InStateCase = EStateCase::MAX, TArray<FGOAPState>* InPreconditions = nullptr)
+	FAction(TArray<FGOAPState>* InEffects = nullptr, EStateCase InStateCase = EStateCase::MAX, FGOAPState InAction = FGOAPState::FGOAPState(), TArray<FGOAPState>* InPreconditions = nullptr)
 	{
 		Effects = *InEffects;
 		StateCase = InStateCase;
+		Action = InAction;
 		Preconditions = *InPreconditions;
 	}
 };
@@ -189,6 +191,42 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GOAP")
 		float Health = 100.f;
 
+	// The acceptable error margin of a ray trace for sight
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GOAP")
+		float LocationErrorMargin = 100.f;
+
+	// The weapon currently drawn by the enemy
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GOAP")
+		FWeaponDetails CurrentWeapon;
+	// The array of weapons the enemy has
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GOAP")
+		UInventory* Inventory = nullptr;
+	// The meshes of the weapons
+	UStaticMeshComponent* MeleeMesh = nullptr;
+	USkeletalMeshComponent* RangedMesh = nullptr;
+
+	// The audio of the attacks
+	UAudioComponent* AttackSoundComponent = nullptr;
+	USoundBase* MeleeSound = nullptr;
+	USoundBase* RangedSound = nullptr;
+
+	// The AI controller for the enemy
+	AGOAPAIController* GOAPController = nullptr;
+
+	// Variables used for the enemy's attacks
+	UPROPERTY()
+		UStaticMeshComponent* MeleeMeshComponent = nullptr;
+	UPROPERTY()
+		USkeletalMeshComponent* RangedMeshComponent = nullptr;
+	UPROPERTY()
+		float MeleeCooldown = 0.f;
+	UPROPERTY()
+		bool IsMeleeAttacking = false;
+	UPROPERTY()
+		bool Attacking = false;
+	UPROPERTY()
+		float AttackTimer = 0.f;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -199,11 +237,24 @@ protected:
 	// Called to ensure the current plan is valid
 	bool ValidatePlan(TArray<FAction> TestPlan);
 
+	// Called when an enemy wants to initiate an action, returns whether the action is valid
+	bool TakeAction(FAction Action);
+
+	// Called to validate an action's precondition is met
+	bool ValidatePrecondition(FGOAPState Precondition);
+
+	// Called to query the world state
+	// Checks line of sight
+	bool CheckSight(FVector LookAtLocation);
+	// Checks if actor is at location
+	bool CheckLocation(FVector IsAtLocation);
+	// Checks the health of the given actor, returns true if below or equal to given float
+	bool CheckHealth(float InHealth, AActor* InSubject);
+	// Checks the ammo of the enemy, returns true if has ammo
+	bool CheckAmmo();
+
 public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
-
-	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
 };

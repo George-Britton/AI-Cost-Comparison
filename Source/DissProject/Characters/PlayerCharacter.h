@@ -106,7 +106,7 @@ public:
 
 	// Variables related to the player's inventory
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Inventory")
-		UInventory* Inventory;
+		UInventory* Inventory = nullptr;
 	UPROPERTY()
 		int32 CurrentInventoryItem = 0;
 
