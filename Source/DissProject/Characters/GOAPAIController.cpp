@@ -17,13 +17,6 @@ void AGOAPAIController::MoveToLocation(FVector Location)
 // Called to shoot a laser
 void AGOAPAIController::Attack(FWeaponDetails Weapon, FVector TargetLocation)
 {
-	// These are the parameters for the ray trace
-	FHitResult HitEnemy;
-	FVector RayStart = ParentEnemy->GetActorLocation();
-	FVector RayEnd = RayStart + (ParentEnemy->GetActorForwardVector() * Weapon.Range);
-	FCollisionQueryParams CollisionParameters;
-	CollisionParameters.AddIgnoredActor(ParentEnemy);
-
 	// These are the parameters for the laser
 	FActorSpawnParameters SpawnParams;
 	FVector SpawnLoc = ParentEnemy->GetActorLocation() + ParentEnemy->GetActorForwardVector() * 100;
@@ -40,14 +33,6 @@ void AGOAPAIController::Attack(FWeaponDetails Weapon, FVector TargetLocation)
 		ParentEnemy->AttackSoundComponent->Play();
 		ParentEnemy->AttackTimer = Weapon.RateOfFire;
 		--ParentEnemy->CurrentWeapon.Ammo;
-		break;
-	case EWeaponType::MELEE:
-		// If the weapon is melee, ray trace in front of the enemy and see if it hits the player
-
-
-		ParentEnemy->AttackSoundComponent->SetSound(ParentEnemy->RangedSound);
-		ParentEnemy->AttackSoundComponent->Play();
-		ParentEnemy->AttackTimer = Weapon.RateOfFire;
 		break;
 	default: break;
 	}

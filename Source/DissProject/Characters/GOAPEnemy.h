@@ -49,7 +49,7 @@ struct FGOAPState
 
 	// The actor that we are checking the state of
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
-		AActor* Subject;
+		FString Subject;
 
 	// The bool value we might check
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
@@ -68,7 +68,7 @@ struct FGOAPState
 		FVector VectorValue;
 
 	// Default constructor
-	FGOAPState(EVariableType InVariableType = EVariableType::MAX, EStateCase InStateCase = EStateCase::MAX, AActor* InSubject = nullptr, bool InBoolValue = false, float InFloatValue = 0.f, int32 InIntValue = 0, FVector InVectorValue = FVector(0.f, 0.f, 0.f))
+	FGOAPState(EVariableType InVariableType = EVariableType::MAX, EStateCase InStateCase = EStateCase::MAX, FString InSubject = "", bool InBoolValue = false, float InFloatValue = 0.f, int32 InIntValue = 0, FVector InVectorValue = FVector(0.f, 0.f, 0.f))
 	{
 		VariableType = InVariableType;
 		StateCase = InStateCase,
@@ -136,6 +136,28 @@ struct FGOAPState
 	{
 		return VectorValue == VectorValue;
 	}
+
+	// Returns if the passed in state is the same as the tested one
+	bool operator==(FGOAPState InState)
+	{
+		return (VariableType == InState.VariableType &&
+				StateCase == InState.StateCase &&
+				Subject == InState.Subject &&
+				BoolValue == InState.BoolValue &&
+				FloatValue == InState.FloatValue &&
+				IntValue == InState.IntValue &&
+				VectorValue == InState.VectorValue);
+	}
+	bool operator!=(FGOAPState InState)
+	{
+		return !(VariableType == InState.VariableType &&
+				StateCase == InState.StateCase &&
+				Subject == InState.Subject &&
+				BoolValue == InState.BoolValue &&
+				FloatValue == InState.FloatValue &&
+				IntValue == InState.IntValue &&
+				VectorValue == InState.VectorValue);
+	}
 };
 
 // The struct of actions the enemy can do to affect the game world
@@ -154,19 +176,31 @@ struct FAction
 
 	// The action state to take in order to achieve the goal
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
-		FGOAPState Action;
+		FString Action;
 
 	// The world variables that must be true to undertake the action
 	UPROPERTY(VisibleAnywhere, Category = "GOAP")
 		TArray<FGOAPState> Preconditions;
 
 	// Default constructor
-	FAction(TArray<FGOAPState>* InEffects = nullptr, EStateCase InStateCase = EStateCase::MAX, FGOAPState InAction = FGOAPState::FGOAPState(), TArray<FGOAPState>* InPreconditions = nullptr)
+	FAction(TArray<FGOAPState> InEffects = TArray<FGOAPState>::TArray(), EStateCase InStateCase = EStateCase::MAX, FString InAction = "", TArray<FGOAPState> InPreconditions = TArray<FGOAPState>::TArray())
 	{
-		Effects = *InEffects;
+		if (InEffects.IsValidIndex(0))
+		{
+			for (int32 Index = 0; Index < InEffects.Num(); ++Index)
+			{
+				Effects.Emplace(InEffects[Index]);
+			}
+		}
 		StateCase = InStateCase;
 		Action = InAction;
-		Preconditions = *InPreconditions;
+		if (InPreconditions.IsValidIndex(0))
+		{
+			for (int32 Index = 0; Index < InPreconditions.Num(); ++Index)
+			{
+				Preconditions.Emplace(InPreconditions[Index]);
+			}
+		}
 	}
 };
 
@@ -215,13 +249,7 @@ public:
 
 	// Variables used for the enemy's attacks
 	UPROPERTY()
-		UStaticMeshComponent* MeleeMeshComponent = nullptr;
-	UPROPERTY()
 		USkeletalMeshComponent* RangedMeshComponent = nullptr;
-	UPROPERTY()
-		float MeleeCooldown = 0.f;
-	UPROPERTY()
-		bool IsMeleeAttacking = false;
 	UPROPERTY()
 		bool Attacking = false;
 	UPROPERTY()
@@ -231,8 +259,15 @@ protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
+	// Called to create the inventory
+	void CreateInventory();
+
+	// Called to create the actionbase
+	void CreateActionBase();
+
 	// Called to create a plan of actions
-	TArray<FAction> Formulate();
+	TArray<FAction> GetPlan();
+	TArray<FAction> Formulate(int32 Steps, FGOAPState Precondition, TArray<FAction> CurrentPlan);
 
 	// Called to ensure the current plan is valid
 	bool ValidatePlan(TArray<FAction> TestPlan);
@@ -245,11 +280,11 @@ protected:
 
 	// Called to query the world state
 	// Checks line of sight
-	bool CheckSight(FVector LookAtLocation);
+	bool CheckSight(FVector LookAtLocation, FString Actor = "");
 	// Checks if actor is at location
 	bool CheckLocation(FVector IsAtLocation);
 	// Checks the health of the given actor, returns true if below or equal to given float
-	bool CheckHealth(float InHealth, AActor* InSubject);
+	bool CheckHealth(float InHealth, FString InSubject);
 	// Checks the ammo of the enemy, returns true if has ammo
 	bool CheckAmmo();
 
