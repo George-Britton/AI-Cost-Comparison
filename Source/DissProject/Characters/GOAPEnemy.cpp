@@ -3,8 +3,8 @@
 
 #include "GOAPEnemy.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "../Pickups/SpawnerBase.h"
 #include "Sound/SoundCue.h"
-#include "PlayerCharacter.h"
 
 // Sets default values
 AGOAPEnemy::AGOAPEnemy()
@@ -22,6 +22,10 @@ AGOAPEnemy::AGOAPEnemy()
 	// Set up the AI controller
 	AIControllerClass = AGOAPAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+
+	// Set the mesh for the enemy
+	static ConstructorHelpers::FObjectFinder<USkeletalMesh> MeshAsset(TEXT("Game/PolygonScifi/Meshes/Characters/SK_Character_Alien_Male_02.SK_Character_Alien_Male_02"));
+	GetMesh()->SetSkeletalMesh(MeshAsset.Object);
 }
 
 // Called when the game starts or when spawned
@@ -31,6 +35,16 @@ void AGOAPEnemy::BeginPlay()
 	
 	// Make sure we have the controller instance
 	GOAPController = Cast<AGOAPAIController>(GetController());
+
+	// Get all the weapon spawners
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ASpawnerBase::StaticClass(), WeaponSpawners);
+
+	// Get the reference to the player
+	Player = Cast<APlayerCharacter>(UGameplayStatics::GetActorOfClass(this, APlayerCharacter::StaticClass()));
+
+	// Formulate a plan
+	Plan = GetPlan();
+	TakeAction();
 }
 
 // Called to create the inventory
@@ -90,6 +104,20 @@ void AGOAPEnemy::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// If we are mid-move, check location against goal
+	if (IsMoving)
+	{
+		// If we are at the goal, stop moving and take next action
+		if (UKismetMathLibrary::Vector_Distance(GetActorLocation(), MovingToLocation) < LocationErrorMargin)
+		{
+			IsMoving = false;
+			TakeAction();
+		}
+	}
+	else if (!IsMoving && !Attacking)
+	{
+		TakeAction();
+	}
 }
 
 // Called to create a plan of actions
@@ -167,24 +195,153 @@ TArray<FAction> AGOAPEnemy::Formulate(int32 Steps, FGOAPState Precondition, TArr
 // Called to ensure the current plan is valid
 bool AGOAPEnemy::ValidatePlan(TArray<FAction> TestPlan)
 {
-	return false;
+	// Make a copy of the plan to validate
+	TArray<FAction> PlanToValidate = TestPlan;
+	// And an array of effects to check against preconditions
+	TArray<FGOAPState> EffectsToCheck;
+
+	// Loop through the plan, and from last to first, check last effects against current preconditions
+	for (int32 PlanIndex = 0; PlanIndex < TestPlan.Num(); ++PlanIndex)
+	{
+		// Get a copy of the next action, and check
+		FAction CurrentAction = PlanToValidate.Pop(true);
+		if (PlanIndex > 0)
+		{
+			// Loop through the current preconditions...
+			for (auto& Precondition : CurrentAction.Preconditions)
+			{
+				// ...and set a flag for our met effects, looping through them
+				bool PreconditionMet = false;
+				for (auto& Effect : EffectsToCheck)
+				{
+					// If one of the effects we have already got is the precondition, then the precondition is met, and we continue
+					if (Precondition == Effect)
+					{
+						PreconditionMet = true;
+						break;
+					}
+				}
+				// If the precondition is not met, then the plan is not valid, and we must reformulate
+				if (!PreconditionMet) return false;
+			}
+		}
+		// If the plan is so far valid, we append the new effects to the list
+		EffectsToCheck.Append(CurrentAction.Effects);
+	}
+
+	// As long as we haven't returned false by now, the plan is valid, so return true
+	return true;
 }
 
 // Called when an enemy wants to initiate an action, returns whether the action is valid
-bool AGOAPEnemy::TakeAction(FAction Action)
+bool AGOAPEnemy::TakeAction()
 {
+	// Make sure the new plan is valid
+	bool PlanValid = ValidatePlan(Plan);
+	while (!PlanValid) Plan = GetPlan();
+
+	// Remove the next action from the plan, and prepare to facilitate
+	FAction Action = Plan.Pop(true);
+
 	// Check if the preconditions are met
 	for (int32 PreconChecker = 0; PreconChecker < Action.Preconditions.Num(); ++PreconChecker)
 	{
 		if (!ValidatePrecondition(Action.Preconditions[PreconChecker])) return false;
 	}
 
+	// We then get the specifics of the action
+	CalculateAction(Action);
+
+	// If we haven't returned false, we are good to go
 	return true;
+}
+void AGOAPEnemy::CalculateAction(FAction Action)
+{
+	// Get the action to take, and take the action
+	if (Action.Action == "Attack") Attack();
+	else if (Action.Action == "MoveToLocation") MoveToLocation(Action);
+}
+void AGOAPEnemy::Attack()
+{
+	// If we have ammo, attack
+	if (CurrentWeapon.Ammo > 0)
+	{
+		Attacking = true;
+		GOAPController->Attack(CurrentWeapon);
+	}
+	else // If we don't have ammo, flick through the inventory to see if there is any gun with ammo
+	{
+		Attacking = false;
+
+		// First we save the current weapon
+		Inventory->Inventory[CurrentInventoryItem].Ammo = CurrentWeapon.Ammo;
+
+		// We save the index we started on
+		int32 StartingIndex = CurrentInventoryItem;
+
+		while (CurrentWeapon.Ammo == 0 && CurrentInventoryItem != StartingIndex)
+		{
+			// Wrap the item around the valid indecies
+			if (CurrentInventoryItem < 0) CurrentInventoryItem = Inventory->Inventory.Num() - 1;
+			if (CurrentInventoryItem == Inventory->Inventory.Num()) CurrentInventoryItem = 0;
+
+			// If we find a gun that has ammo, equip it
+			if (Inventory->Inventory[CurrentInventoryItem].Ammo > 0 && Inventory->Inventory[CurrentInventoryItem].Type == EWeaponType::RANGED)
+			{
+				CurrentWeapon = Inventory->Inventory[CurrentInventoryItem];
+				break;
+			}
+			++CurrentInventoryItem;
+		}
+		if (CurrentWeapon.Ammo > 0) Attack();
+	}
+}
+void AGOAPEnemy::MoveToLocation(FAction Action)
+{
+	// Set to moving
+	IsMoving = true;
+
+	// If the goal is to get ammo...
+	if (Action.Effects[0].StateCase == EStateCase::AMMO)
+	{
+		// ...we find the closest spawner...
+		AActor* ClosestSpawner = nullptr;
+		for (auto& Spawner : WeaponSpawners)
+		{
+			if (ClosestSpawner)
+			{
+				float ThisSpawnerDistance = UKismetMathLibrary::Vector_Distance(GetActorLocation(), Spawner->GetActorLocation());
+				if (UKismetMathLibrary::Vector_Distance(GetActorLocation(), ClosestSpawner->GetActorLocation()) < ThisSpawnerDistance) ClosestSpawner = Spawner;
+			}
+			else ClosestSpawner = Spawner;
+		}
+		// ...and set the MoveTo goal to its location
+		MovingToLocation = ClosestSpawner->GetActorLocation();
+	}
+	// If the goal is instead to see the player...
+	else if (Action.Effects[0].StateCase == EStateCase::SIGHT)
+	{
+		// ...we get the player's location...
+		FVector PlayerLocation = Player->GetActorLocation();
+		FRotator LookAtPlayerRotation = UKismetMathLibrary::FindLookAtRotation(GetActorLocation(), PlayerLocation);
+		// ...and get the closest point to the player from our current location that makes the player be within 60% of our range
+		FVector ShootingPoint = PlayerLocation - (GetActorLocation() + (0.6f * CurrentWeapon.Range));
+		MovingToLocation = ShootingPoint;
+	}
+	// We then set the AI moving, and break out of the switch
+	GOAPController->MoveToLocation(MovingToLocation);
+}
+
+// Called to equip a weapon
+void AGOAPEnemy::Equip(FWeaponDetails Weapon)
+{
+	RangedMesh->SetSkeletalMesh(Weapon.RangedMesh);
 }
 
 // Called to validate an action's precondition is met
 bool AGOAPEnemy::ValidatePrecondition(FGOAPState Precondition)
 {
+	// Here we filter the precondition through a switch case to validate that whatever variable needs to be true is true
 	switch (Precondition.VariableType)
 	{
 	case EVariableType::BOOLEAN:
@@ -230,17 +387,18 @@ bool AGOAPEnemy::CheckSight(FVector LookAtLocation, FString Actor)
 			if (GetWorld()->LineTraceSingleByChannel(HitActor, RayStart, PlayerLocation, ECC_Visibility, CollisionParameters))
 			{
 				// We check to see if the hit location is within an acceptable distance of the target to allow for volume boundries
-				if (HitActor.Actor->GetClass() == APlayerCharacter::StaticClass()) return true;
+				if (HitActor.Actor == Player && UKismetMathLibrary::Vector_Distance(HitActor.Location, GetActorLocation()) < CurrentWeapon.Range * 0.7f) return true;
 			}
 		}
 	}
 
-	// return false if not already returned
+	// Return false if not already returned
 	return false;
 }
 // Checks if actor is at location
 bool AGOAPEnemy::CheckLocation(FVector IsAtLocation)
 {
+	// We make sure the 
 	return UKismetMathLibrary::Vector_Distance(GetActorLocation(), IsAtLocation) <= LocationErrorMargin;
 }
 // Checks the health of the given actor, returns true if below or equal to given float

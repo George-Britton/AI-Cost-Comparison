@@ -6,6 +6,7 @@
 #include "GameFramework/Character.h"
 #include "../System/Inventory.h"
 #include "../Pickups/Weapon.h"
+#include "PlayerCharacter.h"
 #include "GOAPAIController.h"
 #include "Components/AudioComponent.h"
 #include "GOAPEnemy.generated.h"
@@ -221,13 +222,21 @@ public:
 	UPROPERTY(EditAnywhere, Category = "GOAP")
 		TArray<FAction> Plan;
 
+	// The list of weapon spawners that the enemy can run to
+	UPROPERTY(EditAnywhere, Category = "GOAP")
+		TArray<AActor*> WeaponSpawners;
+
+	// A reference to the player
+	UPROPERTY(EditAnywhere, Category = "GOAP")
+		APlayerCharacter* Player = nullptr;
+
 	// The health of the enemy
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GOAP")
 		float Health = 100.f;
 
 	// The acceptable error margin of a ray trace for sight
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GOAP")
-		float LocationErrorMargin = 100.f;
+		float LocationErrorMargin = 25.f;
 
 	// The weapon currently drawn by the enemy
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GOAP")
@@ -235,6 +244,8 @@ public:
 	// The array of weapons the enemy has
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "GOAP")
 		UInventory* Inventory = nullptr;
+	// The index of the current weapon in the inventory
+	int32 CurrentInventoryItem = 0;
 	// The meshes of the weapons
 	UStaticMeshComponent* MeleeMesh = nullptr;
 	USkeletalMeshComponent* RangedMesh = nullptr;
@@ -246,6 +257,8 @@ public:
 
 	// The AI controller for the enemy
 	AGOAPAIController* GOAPController = nullptr;
+	bool IsMoving = false;
+	FVector MovingToLocation;
 
 	// Variables used for the enemy's attacks
 	UPROPERTY()
@@ -273,7 +286,13 @@ protected:
 	bool ValidatePlan(TArray<FAction> TestPlan);
 
 	// Called when an enemy wants to initiate an action, returns whether the action is valid
-	bool TakeAction(FAction Action);
+	bool TakeAction();
+	void CalculateAction(FAction Action);
+	void Attack();
+	void MoveToLocation(FAction Action);
+
+	// Called to equip a weapon
+	void Equip(FWeaponDetails Weapon);
 
 	// Called to validate an action's precondition is met
 	bool ValidatePrecondition(FGOAPState Precondition);

@@ -25,5 +25,5 @@ public:
 	void MoveToLocation(FVector Location);
 
 	// Called to shoot a laser
-	void Attack(FWeaponDetails Weapon, FVector TargetLocation);
+	void Attack(FWeaponDetails Weapon);
 };

@@ -286,7 +286,7 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 
 	// These are the parameters for the laser
 	FActorSpawnParameters SpawnParams;
-	FVector SpawnLoc = RangedMesh->GetSocketLocation("Gun");
+	FVector SpawnLoc = RangedMesh->GetSocketLocation("Gun") + (GetActorForwardVector() * 100.f);
 	FRotator SpawnRot = FRotator(0, 0, 0);
 	ALaser* Laser = nullptr;
 
