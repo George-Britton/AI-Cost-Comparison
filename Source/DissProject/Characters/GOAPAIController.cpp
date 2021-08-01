@@ -7,12 +7,9 @@
 #include "Kismet/KismetMathLibrary.h"
 
 // Called to send the enemy to the location
-void AGOAPAIController::MoveToLocation(FVector Location)
+void AGOAPAIController::MoveToLocation(AActor* Actor)
 {
-	FAIMoveRequest MoveRequest;
-	MoveRequest.SetGoalLocation(Location);
-	MoveRequest.SetAcceptanceRadius(5.f);
-	MoveTo(MoveRequest);
+	MoveToActor(Actor);
 }
 
 // Called to shoot a laser
@@ -23,18 +20,14 @@ void AGOAPAIController::Attack(FWeaponDetails Weapon)
 
 	// These are the parameters for the laser
 	FActorSpawnParameters SpawnParams;
-	FVector SpawnLoc = ParentEnemy->RangedMesh->GetSocketLocation("Gun") + ParentEnemy->GetActorForwardVector() * 100;
+	FVector SpawnLoc = ParentEnemy->GetActorLocation() + ParentEnemy->GetActorForwardVector() * 100;
 	FRotator SpawnRot = FRotator(0, 0, 0);
 	ALaser* Laser;
 
-	if (Weapon.Type == EWeaponType::RANGED)
-	{
-		// If the weapon is ranged, spawn a laser and assign its attributes
-		Laser = GetWorld()->SpawnActor<ALaser>(ALaser::StaticClass(), SpawnLoc, SpawnRot, SpawnParams);
-		Laser->SetupLaser(Weapon.Range, Weapon.Damage, ParentEnemy->GetActorForwardVector(), 100.f);
-		ParentEnemy->AttackSoundComponent->SetSound(ParentEnemy->RangedSound);
-		ParentEnemy->AttackSoundComponent->Play();
-		ParentEnemy->AttackTimer = Weapon.RateOfFire;
-		--ParentEnemy->CurrentWeapon.Ammo;
-	}
+	// Spawn a laser and assign its attributes
+	Laser = GetWorld()->SpawnActor<ALaser>(ALaser::StaticClass(), SpawnLoc, SpawnRot, SpawnParams);
+	Laser->SetupLaser(Weapon.Range, Weapon.Damage, ParentEnemy->GetActorForwardVector(), 100.f);
+	ParentEnemy->AttackSoundComponent->Play();
+	ParentEnemy->AttackTimer = Weapon.RateOfFire;
+	--ParentEnemy->CurrentWeapon.Ammo;
 }

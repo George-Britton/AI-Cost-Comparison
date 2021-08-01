@@ -1,10 +1,11 @@
 // Fill out your copyright notice in the Description page of Project Settings.
-#define GETENUMSTRING(etype, evalue) ( (FindObject<UEnum>(ANY_PACKAGE, TEXT(etype), true) != nullptr) ? FindObject<UEnum>(ANY_PACKAGE, TEXT(etype), true)->GetEnumName((int32)evalue) : FString("Invalid - are you sure enum uses UENUM() macro?") )
 
 #include "GOAPEnemy.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "../Pickups/SpawnerBase.h"
 #include "Sound/SoundCue.h"
+#include "Laser.h"
+#include "GameFramework/CharacterMovementComponent.h"
 
 // Gloabl constants
 static const float ANIMATION_MESH_OFFSET = -85.f; // The offset for the character mesh to be on the ground
@@ -19,15 +20,23 @@ AGOAPEnemy::AGOAPEnemy()
 	// Create the meshes components and add them to root
 	RangedMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Ranged Mesh"));
 	RangedMeshComponent->SetupAttachment(this->RootComponent);
-	RangedMeshComponent->AddLocalOffset(FVector(0.f, GUN_OFFSET, 0.f));
+	RangedMeshComponent->AddLocalOffset(FVector(GUN_OFFSET, 0.f, 0.f));
+	RangedMeshComponent->AddLocalRotation(FRotator(0.f, -90.f, 0.f));
 
+	// Rotate the mesh to face forward
+	GetMesh()->AddLocalRotation(FRotator(0.f, -90.f, 0.f));
+	
 	// Create the inventory and action base
 	CreateInventory();
 	CreateActionBase();
 
 	// Set up the AI controller
-	AIControllerClass = AGOAPAIController::StaticClass();
+	AIControllerClass = AAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
+	bUseControllerRotationYaw = false;
+	bUseControllerRotationRoll = false;
+	bUseControllerRotationPitch = false;
+	GetCharacterMovement()->bOrientRotationToMovement = true;
 
 	// Set the mesh for the enemy
 	USkeletalMesh* EnemyMesh = nullptr;
@@ -46,8 +55,8 @@ void AGOAPEnemy::BeginPlay()
 	Super::BeginPlay();
 	
 	// Make sure we have the controller instance
-	GOAPController = Cast<AGOAPAIController>(GetController());
-
+	AIController = Cast<AAIController>(GetController());
+	
 	// Get all the weapon spawners
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ASpawnerBase::StaticClass(), WeaponSpawners);
 
@@ -56,13 +65,7 @@ void AGOAPEnemy::BeginPlay()
 
 	// Formulate a plan
 	Plan = GetPlan();
-	FString LogOutput = "";
-	for (auto& ActionInPlan : Plan)
-	{
-		LogOutput += ActionInPlan.Action + " ";
-	}
-	UE_LOG(LogTemp, Warning, TEXT("Plan = "));
-	//TakeAction();
+	TakeAction();
 }
 
 // Called to create the inventory
@@ -81,8 +84,10 @@ void AGOAPEnemy::CreateInventory()
 	AttackSoundComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("Attack Sound Component"));
 	AttackSoundComponent->SetupAttachment(this->RootComponent);
 	AttackSoundComponent->bAllowSpatialization = true;
+	AttackSoundComponent->bAutoActivate = false;
 	static ConstructorHelpers::FObjectFinder<USoundCue> RangedSoundAsset(TEXT("/Game/Assets/Audio/SC_Laser.SC_Laser"));
 	RangedSound = RangedSoundAsset.Object;
+	AttackSoundComponent->SetSound(RangedSound);
 
 	// Equip the gun
 	Equip(Gun);
@@ -131,25 +136,48 @@ void AGOAPEnemy::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// If we are mid-move, check location against goal
-	/*if (IsMoving)
+	if (IsMoving)
 	{
+		GEngine->AddOnScreenDebugMessage(-1, DeltaTime, FColor::Yellow, FString::FromInt(1));
 		// If we are at the goal, stop moving and take next action
-		if (UKismetMathLibrary::Vector_Distance(GetActorLocation(), MovingToLocation) < LocationErrorMargin)
+		if (IsMovingToPlayer && UKismetMathLibrary::Vector_Distance(GetActorLocation(), Player->GetActorLocation()) <= CurrentWeapon.Range * 0.6f)
 		{
+			GEngine->AddOnScreenDebugMessage(-1, DeltaTime, FColor::Yellow, FString::FromInt(2));
 			IsMoving = false;
+			IsMovingToPlayer = false;
+			AIController->StopMovement();
+			TakeAction();
+		}else if (!IsMovingToPlayer && UKismetMathLibrary::Vector_Distance(GetActorLocation(), MovingToLocation) <= LocationErrorMargin)
+		{
+			GEngine->AddOnScreenDebugMessage(-1, DeltaTime, FColor::Yellow, FString::FromInt(3));
+			IsMoving = false;
+			AIController->StopMovement();
 			TakeAction();
 		}
 	}
-	else if (!IsMoving && !Attacking)
+	else if (!IsMoving && !Attacking) { TakeAction(); GEngine->AddOnScreenDebugMessage(-1, DeltaTime, FColor::Yellow, FString::FromInt(4)); }
+	else if (AttackTimer <= 0.f && Attacking) { SpawnLaser(); GEngine->AddOnScreenDebugMessage(-1, DeltaTime, FColor::Yellow, FString::FromInt(5)); }
+	
+	if (AttackTimer > 0.f) AttackTimer -= DeltaTime;
+	
+	GEngine->AddOnScreenDebugMessage(-1, DeltaTime, FColor::Yellow, "AttackTimer: " + FString::SanitizeFloat(AttackTimer));
+	GEngine->AddOnScreenDebugMessage(-1, DeltaTime, FColor::Yellow, "Moving: " + FString::FromInt(int32(IsMoving)) + " - Attacking: " + FString::FromInt(int32(Attacking)));
+
+	if (Plan.IsValidIndex(0))
 	{
-		TakeAction();
-	}*/
+		FString PlanOfAction;
+		for (auto& act : Plan)
+		{
+			PlanOfAction += act.Effects[0].Subject;
+		}
+		GEngine->AddOnScreenDebugMessage(-1, DeltaTime, FColor::Yellow, PlanOfAction);
+	}
+	else GetPlan();
 }
 
 // Called to create a plan of actions
 TArray<FAction> AGOAPEnemy::GetPlan()
 {
-	UE_LOG(LogTemp, Warning, TEXT("GetPlan"));
 	// Use A* algorithm to find the shortest path
 	bool GotPlan = false; // The flag for having a valid plan
 	int32 Steps = 0; // The number of actions it will take to reach the goal
@@ -159,7 +187,6 @@ TArray<FAction> AGOAPEnemy::GetPlan()
 	// While we don't have a plan, loop with increasing plan depth
 	while (!GotPlan)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("GetPlan while loop: %d"), Steps);
 		// Get a plan from the Formulate function
 		PlanInWorks = Formulate(Steps, Goal, PlanInWorks);
 
@@ -178,18 +205,6 @@ TArray<FAction> AGOAPEnemy::GetPlan()
 }
 TArray<FAction> AGOAPEnemy::Formulate(int32 Steps, FGOAPState Precondition, TArray<FAction> CurrentPlan)
 {
-	FString LogOutput = "Formulate(" + FString::FromInt(Steps) + ", " + Precondition.Subject;
-	if (CurrentPlan.IsValidIndex(0))
-	{
-		LogOutput += ", [";
-		for (auto& ActionInPlan : CurrentPlan)
-		{
-			LogOutput += ActionInPlan.Action + "(" + ActionInPlan.Effects[0].Subject + ")" + ", ";
-		}
-		LogOutput += "]";
-	}
-	LogOutput += ")";
-	UE_LOG(LogTemp, Warning, TEXT("%s"), *LogOutput);
 	// if the precondition is already met, then the plan is valid
 	if (ValidatePrecondition(Precondition)) return CurrentPlan;
 	// If the depth reached is 0, then there is no valid plan for the initial depth (*Inception voice* "We need to go deeper")
@@ -253,7 +268,6 @@ int32 AGOAPEnemy::GetNumberOfUnmetPreconditions(FAction Action)
 // Called to ensure the current plan is valid
 bool AGOAPEnemy::ValidatePlan(TArray<FAction> TestPlan)
 {
-	UE_LOG(LogTemp, Warning, TEXT("ValidatePlan"));
 	if (!TestPlan.IsValidIndex(0)) return false;
 	
 	// And an array of States that are so far true in the plan formulation, start it off with just saying the enemy is alive
@@ -264,34 +278,24 @@ bool AGOAPEnemy::ValidatePlan(TArray<FAction> TestPlan)
 	// Starting from the first action in the plan, loop through the plan
 	for (int32 PlanIndex = TestPlan.Num() - 1; PlanIndex >= 0; --PlanIndex)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("PlanIndex to test: %d"), PlanIndex);
 		// Check all the preconditions of the action is in the true states array
 		for (auto& Precondition : TestPlan[PlanIndex].Preconditions)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Precondition to test: %s %s"), *Precondition.Subject, *GETENUMSTRING("EStateCase", Precondition.StateCase));
 			bool PreconditionMet = false;
 			for (auto& TrueState : TrueStates)
 			{
-				UE_LOG(LogTemp, Warning, TEXT("Does %s %s = %s %s ?"), *Precondition.Subject, *GETENUMSTRING("EStateCase", Precondition.StateCase), *TrueState.Subject, *GETENUMSTRING("EStateCase", TrueState.StateCase));
 				if (TrueState == Precondition)
 				{
-					UE_LOG(LogTemp, Warning, TEXT("YES"));
 					PreconditionMet = true;
 					break;
 				}
-				UE_LOG(LogTemp, Warning, TEXT("NO"));
 			}
 			// If it's not, then the plan isn't valid
-			if (!PreconditionMet && !ValidatePrecondition(Precondition))
-			{
-				UE_LOG(LogTemp, Warning, TEXT("Precondition %s %s not met"), *Precondition.Subject, *GETENUMSTRING("EStateCase", Precondition.StateCase));
-				return false;
-			}
+			if (!PreconditionMet && !ValidatePrecondition(Precondition)) return false;
 		}
 		// If the preconditions are met, add the effects of this action to the true states of the array
 		for (auto& Effect : TestPlan[PlanIndex].Effects)
 		{
-			UE_LOG(LogTemp, Warning, TEXT("Adding %s %s to TrueStates"), *Effect.Subject, *GETENUMSTRING("EStateCase", Effect.StateCase));
 			TrueStates.Emplace(Effect);
 		}
 	}
@@ -303,20 +307,18 @@ bool AGOAPEnemy::ValidatePlan(TArray<FAction> TestPlan)
 // Called when an enemy wants to initiate an action, returns whether the action is valid
 bool AGOAPEnemy::TakeAction()
 {
-	UE_LOG(LogTemp, Warning, TEXT("TakeAction"));
 	// Make sure the new plan is valid
 	bool PlanValid = ValidatePlan(Plan);
 	while (!PlanValid) Plan = GetPlan();
 
 	// Remove the next action from the plan, and prepare to facilitate
 	FAction Action = Plan.Pop(true);
-
+	
 	// Check if the preconditions are met
 	for (int32 PreconChecker = 0; PreconChecker < Action.Preconditions.Num(); ++PreconChecker)
 	{
 		if (!ValidatePrecondition(Action.Preconditions[PreconChecker])) return false;
 	}
-
 	// We then get the specifics of the action
 	CalculateAction(Action);
 
@@ -334,8 +336,7 @@ void AGOAPEnemy::Attack()
 	// If we have ammo, attack
 	if (CurrentWeapon.Ammo > 0)
 	{
-		Attacking = true;
-		GOAPController->Attack(CurrentWeapon);
+		if (!Attacking) Attacking = true;
 	}
 	else // If we don't have ammo, flick through the inventory to see if there is any gun with ammo
 	{
@@ -349,7 +350,7 @@ void AGOAPEnemy::Attack()
 
 		while (CurrentWeapon.Ammo == 0 && CurrentInventoryItem != StartingIndex)
 		{
-			// Wrap the item around the valid indecies
+			// Wrap the item around the valid indicies
 			if (CurrentInventoryItem < 0) CurrentInventoryItem = Inventory->Inventory.Num() - 1;
 			if (CurrentInventoryItem == Inventory->Inventory.Num()) CurrentInventoryItem = 0;
 
@@ -361,13 +362,39 @@ void AGOAPEnemy::Attack()
 			}
 			++CurrentInventoryItem;
 		}
-		if (CurrentWeapon.Ammo > 0) Attack();
+		if (CurrentWeapon.Ammo > 0)
+		{
+			Equip(Inventory->Inventory[CurrentInventoryItem]);
+			Attack();
+		}
 	}
+}
+void AGOAPEnemy::SpawnLaser()
+{
+	// We make sure we are facing the player
+	SetActorRotation(UKismetMathLibrary::FindLookAtRotation(GetActorLocation(), Player->GetActorLocation()));
+
+	// These are the parameters for the laser
+	FActorSpawnParameters SpawnParams;
+	FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 100;
+	FRotator SpawnRot = FRotator(0, 0, 0);
+	ALaser* Laser;
+
+	// Spawn a laser and assign its attributes
+	Laser = GetWorld()->SpawnActor<ALaser>(ALaser::StaticClass(), SpawnLoc, SpawnRot, SpawnParams);
+	Laser->SetupLaser(CurrentWeapon.Range, CurrentWeapon.Damage, GetActorForwardVector(), 100.f);
+	AttackSoundComponent->Play();
+	AttackTimer = CurrentWeapon.RateOfFire;
+	--CurrentWeapon.Ammo;
+
+	// And turn off the attack
+	Attacking = false;
 }
 void AGOAPEnemy::MoveToLocation(FAction Action)
 {
-	// Set to moving
+	// Set to moving and attacking to false
 	IsMoving = true;
+	Attacking = false;
 
 	// If the goal is to get ammo...
 	if (Action.Effects[0].StateCase == EStateCase::AMMO)
@@ -385,31 +412,28 @@ void AGOAPEnemy::MoveToLocation(FAction Action)
 		}
 		// ...and set the MoveTo goal to its location
 		MovingToLocation = ClosestSpawner->GetActorLocation();
+		AIController->MoveToActor(ClosestSpawner);
 	}
 	// If the goal is instead to see the player...
-	else if (Action.Effects[0].StateCase == EStateCase::SIGHT)
+	else
 	{
-		// ...we get the player's location...
-		FVector PlayerLocation = Player->GetActorLocation();
-		FRotator LookAtPlayerRotation = UKismetMathLibrary::FindLookAtRotation(GetActorLocation(), PlayerLocation);
-		// ...and get the closest point to the player from our current location that makes the player be within 60% of our range
-		FVector ShootingPoint = PlayerLocation - (GetActorLocation() + (0.6f * CurrentWeapon.Range));
-		MovingToLocation = ShootingPoint;
+		// ...we move to the player's location
+		IsMovingToPlayer = true;
+		MovingToLocation = Player->GetActorLocation();
+		AIController->MoveToActor(Player);
 	}
-	// We then set the AI moving, and break out of the switch
-	GOAPController->MoveToLocation(MovingToLocation);
 }
 
 // Called to equip a weapon
 void AGOAPEnemy::Equip(FWeaponDetails Weapon)
 {
+	CurrentWeapon = Weapon;
 	RangedMeshComponent->SetSkeletalMesh(Weapon.RangedMesh);
 }
 
 // Called to validate an action's precondition is met
 bool AGOAPEnemy::ValidatePrecondition(FGOAPState Precondition)
 {
-	UE_LOG(LogTemp, Warning, TEXT("Validate Precondition: %s"), *Precondition.Subject);
 	// Here we filter the precondition through a switch case to validate that whatever variable needs to be true is true
 	switch (Precondition.VariableType)
 	{
@@ -432,13 +456,13 @@ bool AGOAPEnemy::ValidatePrecondition(FGOAPState Precondition)
 // Checks line of sight
 bool AGOAPEnemy::CheckSight(FVector LookAtLocation, FString Actor)
 {
-	UE_LOG(LogTemp, Warning, TEXT("CheckSight(%s, %s)"), *LookAtLocation.ToString(), *Actor);
 	// These are the parameters for the ray trace
 	FHitResult HitActor;
 	FVector RayStart = GetActorLocation();
 	FCollisionQueryParams CollisionParameters;
 	CollisionParameters.AddIgnoredActor(this);
-
+	CollisionParameters.AddIgnoredActors(WeaponSpawners);
+	
 	if (Actor == "")
 	{
 		// Here we do a ray trace to see if the location is in line of sight
@@ -448,20 +472,15 @@ bool AGOAPEnemy::CheckSight(FVector LookAtLocation, FString Actor)
 			if (UKismetMathLibrary::Vector_Distance(HitActor.Location, LookAtLocation) <= LocationErrorMargin) return true;
 		}
 	}
-	else
+	else if (Actor == "Player")
 	{
-		if (Actor == "Player")
+		FVector PlayerLocation = Player->GetActorLocation();
+		// Here we do a ray trace to see if the player is in line of sight
+		if (GetWorld()->LineTraceSingleByChannel(HitActor, RayStart, PlayerLocation, ECC_Visibility, CollisionParameters))
 		{
-			FVector PlayerLocation = Player->GetActorLocation();
-			UE_LOG(LogTemp, Warning, TEXT("PlayerLocation = %s"), *PlayerLocation.ToString());
-			UE_LOG(LogTemp, Warning, TEXT("EnemyLocation = %s"), *GetActorLocation().ToString());
-			//UE_LOG(LogTemp, Warning, TEXT("Distance: %s"), *FString::SanitizeFloat(UKismetMathLibrary::Vector_Distance(HitActor.Location, GetActorLocation()));
-			// Here we do a ray trace to see if the player is in line of sight
-			if (GetWorld()->LineTraceSingleByChannel(HitActor, RayStart, PlayerLocation, ECC_Visibility, CollisionParameters))
-			{
-				// We check to see if the hit location is within an acceptable distance of the target to allow for volume boundries
-				if (HitActor.Actor == Player && UKismetMathLibrary::Vector_Distance(HitActor.Location, GetActorLocation()) < CurrentWeapon.Range * 0.7f) return true;
-			}
+			// We check to see if the hit location is within an acceptable distance of the target to allow for volume boundries
+			if (HitActor.Actor == Player && UKismetMathLibrary::Vector_Distance(HitActor.Location, GetActorLocation()) < CurrentWeapon.Range * 0.7f) return true;
+			Attacking = false;
 		}
 	}
 

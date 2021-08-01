@@ -22,7 +22,7 @@ public:
 
 public:
 	// Called to send the enemy to the location
-	void MoveToLocation(FVector Location);
+	void MoveToLocation(AActor* Actor);
 
 	// Called to shoot a laser
 	void Attack(FWeaponDetails Weapon);

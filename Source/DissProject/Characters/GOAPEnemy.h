@@ -256,8 +256,9 @@ public:
 	USoundBase* RangedSound = nullptr;
 
 	// The AI controller for the enemy
-	AGOAPAIController* GOAPController = nullptr;
+	AAIController* AIController = nullptr;
 	bool IsMoving = false;
+	bool IsMovingToPlayer = false;
 	FVector MovingToLocation;
 
 	// Variables used for the enemy's attacks
@@ -290,6 +291,7 @@ public:
 	bool TakeAction();
 	void CalculateAction(FAction Action);
 	void Attack();
+	void SpawnLaser();
 	void MoveToLocation(FAction Action);
 
 	// Called to equip a weapon
