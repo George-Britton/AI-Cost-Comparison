@@ -268,7 +268,7 @@ public:
 	UPROPERTY()
 		float AttackTimer = 0.f;
 
-protected:
+public:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
@@ -281,6 +281,7 @@ protected:
 	// Called to create a plan of actions
 	TArray<FAction> GetPlan();
 	TArray<FAction> Formulate(int32 Steps, FGOAPState Precondition, TArray<FAction> CurrentPlan);
+	int32 GetNumberOfUnmetPreconditions(FAction Action);
 
 	// Called to ensure the current plan is valid
 	bool ValidatePlan(TArray<FAction> TestPlan);
@@ -307,7 +308,6 @@ protected:
 	// Checks the ammo of the enemy, returns true if has ammo
 	bool CheckAmmo();
 
-public:	
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 

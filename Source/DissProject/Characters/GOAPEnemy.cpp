@@ -1,10 +1,14 @@
 // Fill out your copyright notice in the Description page of Project Settings.
-
+#define GETENUMSTRING(etype, evalue) ( (FindObject<UEnum>(ANY_PACKAGE, TEXT(etype), true) != nullptr) ? FindObject<UEnum>(ANY_PACKAGE, TEXT(etype), true)->GetEnumName((int32)evalue) : FString("Invalid - are you sure enum uses UENUM() macro?") )
 
 #include "GOAPEnemy.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "../Pickups/SpawnerBase.h"
 #include "Sound/SoundCue.h"
+
+// Gloabl constants
+static const float ANIMATION_MESH_OFFSET = -85.f; // The offset for the character mesh to be on the ground
+static const float GUN_OFFSET = 20.f; // The offset for the gun to be in front
 
 // Sets default values
 AGOAPEnemy::AGOAPEnemy()
@@ -15,17 +19,25 @@ AGOAPEnemy::AGOAPEnemy()
 	// Create the meshes components and add them to root
 	RangedMeshComponent = CreateDefaultSubobject<USkeletalMeshComponent>(TEXT("Ranged Mesh"));
 	RangedMeshComponent->SetupAttachment(this->RootComponent);
+	RangedMeshComponent->AddLocalOffset(FVector(0.f, GUN_OFFSET, 0.f));
 
-	// Create the inventory
+	// Create the inventory and action base
 	CreateInventory();
+	CreateActionBase();
 
 	// Set up the AI controller
 	AIControllerClass = AGOAPAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
 	// Set the mesh for the enemy
-	static ConstructorHelpers::FObjectFinder<USkeletalMesh> MeshAsset(TEXT("Game/PolygonScifi/Meshes/Characters/SK_Character_Alien_Male_02.SK_Character_Alien_Male_02"));
-	GetMesh()->SetSkeletalMesh(MeshAsset.Object);
+	USkeletalMesh* EnemyMesh = nullptr;
+	while (!EnemyMesh)
+	{
+		static ConstructorHelpers::FObjectFinder<USkeletalMesh> MeshAsset(TEXT("/Game/PolygonScifi/Meshes/Characters/SK_Character_Alien_Male_02.SK_Character_Alien_Male_02"));
+		EnemyMesh = MeshAsset.Object;
+	}
+	GetMesh()->SetSkeletalMesh(EnemyMesh);
+	GetMesh()->AddLocalOffset(FVector(0.f, 0.f, ANIMATION_MESH_OFFSET));
 }
 
 // Called when the game starts or when spawned
@@ -44,7 +56,13 @@ void AGOAPEnemy::BeginPlay()
 
 	// Formulate a plan
 	Plan = GetPlan();
-	TakeAction();
+	FString LogOutput = "";
+	for (auto& ActionInPlan : Plan)
+	{
+		LogOutput += ActionInPlan.Action + " ";
+	}
+	UE_LOG(LogTemp, Warning, TEXT("Plan = "));
+	//TakeAction();
 }
 
 // Called to create the inventory
@@ -65,6 +83,9 @@ void AGOAPEnemy::CreateInventory()
 	AttackSoundComponent->bAllowSpatialization = true;
 	static ConstructorHelpers::FObjectFinder<USoundCue> RangedSoundAsset(TEXT("/Game/Assets/Audio/SC_Laser.SC_Laser"));
 	RangedSound = RangedSoundAsset.Object;
+
+	// Equip the gun
+	Equip(Gun);
 }
 
 // Called to create the actionbase
@@ -73,8 +94,8 @@ void AGOAPEnemy::CreateActionBase()
 	// Base GOAP states
 	FGOAPState PlayerDead = FGOAPState(EVariableType::FLOAT, EStateCase::HEALTH, "Player", false, 0.f);
 	FGOAPState CanSeePlayer = FGOAPState(EVariableType::VECTOR, EStateCase::SIGHT, "Player");
-	FGOAPState HasAmmo = FGOAPState(EVariableType::BOOLEAN, EStateCase::AMMO, "", true);
-	FGOAPState BeAlive = FGOAPState(EVariableType::FLOAT, EStateCase::HEALTH, GetName(), false, 100.f);
+	FGOAPState HasAmmo = FGOAPState(EVariableType::BOOLEAN, EStateCase::AMMO, "Ammo", true);
+	FGOAPState BeAlive = FGOAPState(EVariableType::FLOAT, EStateCase::HEALTH, GetName(), false, 101.f);
 
 	// Building action to attack player
 	TArray<FGOAPState> AttackPlayerPreconditions;
@@ -86,17 +107,22 @@ void AGOAPEnemy::CreateActionBase()
 
 	// Building action to go to player
 	TArray<FGOAPState> GoToPlayerPreconditions;
-	GoToPlayerPreconditions.Init(HasAmmo, 1);
+	GoToPlayerPreconditions.Init(BeAlive, 1);
 	TArray<FGOAPState> GoToPlayerEffects;
 	GoToPlayerEffects.Init(CanSeePlayer, 1);
 	FAction GoToPlayer = FAction(GoToPlayerEffects, EStateCase::LOCATION, "MoveToLocation", GoToPlayerPreconditions);
 
 	// Building action to go to ammo
 	TArray<FGOAPState> GoToAmmoPreconditions;
-	GoToAmmoPreconditions.Init(HasAmmo, 1);
+	GoToAmmoPreconditions.Init(BeAlive, 1);
 	TArray<FGOAPState> GoToAmmoEffects;
-	GoToAmmoEffects.Init(BeAlive, 1);
+	GoToAmmoEffects.Init(HasAmmo, 1);
 	FAction GoToAmmo = FAction(GoToAmmoEffects, EStateCase::LOCATION, "MoveToLocation", GoToAmmoPreconditions);
+
+	// Add them all to the action base
+	Actions.Emplace(AttackPlayer);
+	Actions.Emplace(GoToPlayer);
+	Actions.Emplace(GoToAmmo);
 }
 
 // Called every frame
@@ -105,7 +131,7 @@ void AGOAPEnemy::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 
 	// If we are mid-move, check location against goal
-	if (IsMoving)
+	/*if (IsMoving)
 	{
 		// If we are at the goal, stop moving and take next action
 		if (UKismetMathLibrary::Vector_Distance(GetActorLocation(), MovingToLocation) < LocationErrorMargin)
@@ -117,13 +143,14 @@ void AGOAPEnemy::Tick(float DeltaTime)
 	else if (!IsMoving && !Attacking)
 	{
 		TakeAction();
-	}
+	}*/
 }
 
 // Called to create a plan of actions
 TArray<FAction> AGOAPEnemy::GetPlan()
 {
-	// Use IDDFS algorithm to find the shortest path
+	UE_LOG(LogTemp, Warning, TEXT("GetPlan"));
+	// Use A* algorithm to find the shortest path
 	bool GotPlan = false; // The flag for having a valid plan
 	int32 Steps = 0; // The number of actions it will take to reach the goal
 	FGOAPState Goal = FGOAPState(EVariableType::FLOAT, EStateCase::HEALTH, "Player", false, 0.f); // The goal state of having the player dead
@@ -132,6 +159,7 @@ TArray<FAction> AGOAPEnemy::GetPlan()
 	// While we don't have a plan, loop with increasing plan depth
 	while (!GotPlan)
 	{
+		UE_LOG(LogTemp, Warning, TEXT("GetPlan while loop: %d"), Steps);
 		// Get a plan from the Formulate function
 		PlanInWorks = Formulate(Steps, Goal, PlanInWorks);
 
@@ -140,8 +168,9 @@ TArray<FAction> AGOAPEnemy::GetPlan()
 		if (!GotPlan)
 		{
 			PlanInWorks.Empty();
-			++Steps;
+			Steps++;
 		}
+		if (Steps >= 5) this->Destroy();
 	}
 
 	// Return the validated plan
@@ -149,6 +178,18 @@ TArray<FAction> AGOAPEnemy::GetPlan()
 }
 TArray<FAction> AGOAPEnemy::Formulate(int32 Steps, FGOAPState Precondition, TArray<FAction> CurrentPlan)
 {
+	FString LogOutput = "Formulate(" + FString::FromInt(Steps) + ", " + Precondition.Subject;
+	if (CurrentPlan.IsValidIndex(0))
+	{
+		LogOutput += ", [";
+		for (auto& ActionInPlan : CurrentPlan)
+		{
+			LogOutput += ActionInPlan.Action + "(" + ActionInPlan.Effects[0].Subject + ")" + ", ";
+		}
+		LogOutput += "]";
+	}
+	LogOutput += ")";
+	UE_LOG(LogTemp, Warning, TEXT("%s"), *LogOutput);
 	// if the precondition is already met, then the plan is valid
 	if (ValidatePrecondition(Precondition)) return CurrentPlan;
 	// If the depth reached is 0, then there is no valid plan for the initial depth (*Inception voice* "We need to go deeper")
@@ -158,8 +199,9 @@ TArray<FAction> AGOAPEnemy::Formulate(int32 Steps, FGOAPState Precondition, TArr
 		return NullArray;
 	}
 
-	// Make a copy of the plan to mess around with and add possible actions to
-	TArray<FAction> NewPlan = CurrentPlan;
+	// These are the heuristic of the A* search algorithm
+	FAction ActionWithMostMetPreconditions = Actions[0];
+	int NumOfUnmetPreconditions = 999;
 
 	// Loop through all known actions...
 	for (auto& Action : Actions)
@@ -167,66 +209,91 @@ TArray<FAction> AGOAPEnemy::Formulate(int32 Steps, FGOAPState Precondition, TArr
 		// ...and see if any of the effects fulfil the precondition passed in
 		for (auto& Effect : Action.Effects)
 		{
-			if (Effect != Precondition) continue; // If not, continue searching
-
-			// If it does, add the action to the plan, and set a counter for unmet preconditions for the new action
-			NewPlan.Add(Action);
-			int32 UnmetPreconditions = 0;
-
-			// Loop through the action's preconditions, and see how many of them are unmet
-			for (auto& Preconditions : Action.Preconditions)
+			if (Effect == Precondition)
 			{
-				TArray<FAction> TestPlan = Formulate(Steps - 1, Precondition, NewPlan);
-				if (!TestPlan.IsValidIndex(0)) ++UnmetPreconditions;
+				// Get the amount of unmet preconditions for this action, and compare it to the current value
+				int32 UnmetPreconditions = GetNumberOfUnmetPreconditions(Action);
+				if (UnmetPreconditions < NumOfUnmetPreconditions)
+				{
+					// If it's lower, we want this action, as it will be quicker
+					ActionWithMostMetPreconditions = Action;
+					NumOfUnmetPreconditions = UnmetPreconditions;
+				}
+				break;
 			}
-			// If there are no unmet preconditions, then we have the final plan
-			if (UnmetPreconditions == 0) return NewPlan;
-
-			// If there are unmet preconditions, then we know that this action isn't the end, so go to the next
-			NewPlan.RemoveAt(NewPlan.Num() - 1);
-		}
+		}	
 	}
 
 	// If there was no plan found, we return NULL, passing all the way back up until to increment the search depth
-	TArray<FAction> NullArray;
-	return NullArray;
+	TArray<FAction> TestPlan = CurrentPlan;
+	TestPlan.Emplace(ActionWithMostMetPreconditions);
+	for (auto& ActionPrecondition : ActionWithMostMetPreconditions.Preconditions)
+	{
+		TestPlan = Formulate(Steps - 1, ActionPrecondition, TestPlan);
+		if (!TestPlan.IsValidIndex(0))
+		{
+			TArray<FAction> nullArray;
+			return nullArray;
+		}
+	}
+
+	// If we haven't returned a null array by now, the plan must be valid
+	return TestPlan;
+}
+int32 AGOAPEnemy::GetNumberOfUnmetPreconditions(FAction Action)
+{
+	int32 UnmetPreconditions = 0;
+	for (auto& Precondition : Action.Preconditions)
+	{
+		if (!ValidatePrecondition(Precondition)) UnmetPreconditions++;
+	}
+	return UnmetPreconditions;
 }
 
 // Called to ensure the current plan is valid
 bool AGOAPEnemy::ValidatePlan(TArray<FAction> TestPlan)
 {
-	// Make a copy of the plan to validate
-	TArray<FAction> PlanToValidate = TestPlan;
-	// And an array of effects to check against preconditions
-	TArray<FGOAPState> EffectsToCheck;
-
-	// Loop through the plan, and from last to first, check last effects against current preconditions
-	for (int32 PlanIndex = 0; PlanIndex < TestPlan.Num(); ++PlanIndex)
+	UE_LOG(LogTemp, Warning, TEXT("ValidatePlan"));
+	if (!TestPlan.IsValidIndex(0)) return false;
+	
+	// And an array of States that are so far true in the plan formulation, start it off with just saying the enemy is alive
+	TArray<FGOAPState> TrueStates;
+	FGOAPState BeAlive = FGOAPState(EVariableType::FLOAT, EStateCase::HEALTH, GetName(), false, 101.f);
+	TrueStates.Init(BeAlive, 1);
+	
+	// Starting from the first action in the plan, loop through the plan
+	for (int32 PlanIndex = TestPlan.Num() - 1; PlanIndex >= 0; --PlanIndex)
 	{
-		// Get a copy of the next action, and check
-		FAction CurrentAction = PlanToValidate.Pop(true);
-		if (PlanIndex > 0)
+		UE_LOG(LogTemp, Warning, TEXT("PlanIndex to test: %d"), PlanIndex);
+		// Check all the preconditions of the action is in the true states array
+		for (auto& Precondition : TestPlan[PlanIndex].Preconditions)
 		{
-			// Loop through the current preconditions...
-			for (auto& Precondition : CurrentAction.Preconditions)
+			UE_LOG(LogTemp, Warning, TEXT("Precondition to test: %s %s"), *Precondition.Subject, *GETENUMSTRING("EStateCase", Precondition.StateCase));
+			bool PreconditionMet = false;
+			for (auto& TrueState : TrueStates)
 			{
-				// ...and set a flag for our met effects, looping through them
-				bool PreconditionMet = false;
-				for (auto& Effect : EffectsToCheck)
+				UE_LOG(LogTemp, Warning, TEXT("Does %s %s = %s %s ?"), *Precondition.Subject, *GETENUMSTRING("EStateCase", Precondition.StateCase), *TrueState.Subject, *GETENUMSTRING("EStateCase", TrueState.StateCase));
+				if (TrueState == Precondition)
 				{
-					// If one of the effects we have already got is the precondition, then the precondition is met, and we continue
-					if (Precondition == Effect)
-					{
-						PreconditionMet = true;
-						break;
-					}
+					UE_LOG(LogTemp, Warning, TEXT("YES"));
+					PreconditionMet = true;
+					break;
 				}
-				// If the precondition is not met, then the plan is not valid, and we must reformulate
-				if (!PreconditionMet) return false;
+				UE_LOG(LogTemp, Warning, TEXT("NO"));
+			}
+			// If it's not, then the plan isn't valid
+			if (!PreconditionMet && !ValidatePrecondition(Precondition))
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Precondition %s %s not met"), *Precondition.Subject, *GETENUMSTRING("EStateCase", Precondition.StateCase));
+				return false;
 			}
 		}
-		// If the plan is so far valid, we append the new effects to the list
-		EffectsToCheck.Append(CurrentAction.Effects);
+		// If the preconditions are met, add the effects of this action to the true states of the array
+		for (auto& Effect : TestPlan[PlanIndex].Effects)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Adding %s %s to TrueStates"), *Effect.Subject, *GETENUMSTRING("EStateCase", Effect.StateCase));
+			TrueStates.Emplace(Effect);
+		}
 	}
 
 	// As long as we haven't returned false by now, the plan is valid, so return true
@@ -236,6 +303,7 @@ bool AGOAPEnemy::ValidatePlan(TArray<FAction> TestPlan)
 // Called when an enemy wants to initiate an action, returns whether the action is valid
 bool AGOAPEnemy::TakeAction()
 {
+	UE_LOG(LogTemp, Warning, TEXT("TakeAction"));
 	// Make sure the new plan is valid
 	bool PlanValid = ValidatePlan(Plan);
 	while (!PlanValid) Plan = GetPlan();
@@ -335,12 +403,13 @@ void AGOAPEnemy::MoveToLocation(FAction Action)
 // Called to equip a weapon
 void AGOAPEnemy::Equip(FWeaponDetails Weapon)
 {
-	RangedMesh->SetSkeletalMesh(Weapon.RangedMesh);
+	RangedMeshComponent->SetSkeletalMesh(Weapon.RangedMesh);
 }
 
 // Called to validate an action's precondition is met
 bool AGOAPEnemy::ValidatePrecondition(FGOAPState Precondition)
 {
+	UE_LOG(LogTemp, Warning, TEXT("Validate Precondition: %s"), *Precondition.Subject);
 	// Here we filter the precondition through a switch case to validate that whatever variable needs to be true is true
 	switch (Precondition.VariableType)
 	{
@@ -352,7 +421,7 @@ bool AGOAPEnemy::ValidatePrecondition(FGOAPState Precondition)
 		break;
 	case EVariableType::VECTOR:
 		if (Precondition.StateCase == EStateCase::SIGHT) return CheckSight(Precondition.VectorValue, Precondition.Subject);
-		else if (Precondition.StateCase == EStateCase::LOCATION) return CheckLocation(Precondition.VectorValue);
+		if (Precondition.StateCase == EStateCase::LOCATION) return CheckLocation(Precondition.VectorValue);
 	default: return true;
 	}
 
@@ -363,6 +432,7 @@ bool AGOAPEnemy::ValidatePrecondition(FGOAPState Precondition)
 // Checks line of sight
 bool AGOAPEnemy::CheckSight(FVector LookAtLocation, FString Actor)
 {
+	UE_LOG(LogTemp, Warning, TEXT("CheckSight(%s, %s)"), *LookAtLocation.ToString(), *Actor);
 	// These are the parameters for the ray trace
 	FHitResult HitActor;
 	FVector RayStart = GetActorLocation();
@@ -380,9 +450,12 @@ bool AGOAPEnemy::CheckSight(FVector LookAtLocation, FString Actor)
 	}
 	else
 	{
-		if (Actor.Contains("Player"))
+		if (Actor == "Player")
 		{
-			FVector PlayerLocation = UGameplayStatics::GetActorOfClass(this, APlayerCharacter::StaticClass())->GetActorLocation();
+			FVector PlayerLocation = Player->GetActorLocation();
+			UE_LOG(LogTemp, Warning, TEXT("PlayerLocation = %s"), *PlayerLocation.ToString());
+			UE_LOG(LogTemp, Warning, TEXT("EnemyLocation = %s"), *GetActorLocation().ToString());
+			//UE_LOG(LogTemp, Warning, TEXT("Distance: %s"), *FString::SanitizeFloat(UKismetMathLibrary::Vector_Distance(HitActor.Location, GetActorLocation()));
 			// Here we do a ray trace to see if the player is in line of sight
 			if (GetWorld()->LineTraceSingleByChannel(HitActor, RayStart, PlayerLocation, ECC_Visibility, CollisionParameters))
 			{
@@ -405,8 +478,8 @@ bool AGOAPEnemy::CheckLocation(FVector IsAtLocation)
 bool AGOAPEnemy::CheckHealth(float InHealth, FString InSubject)
 {
 	// Check the subject's class, and check the health accordingly
-	if (InSubject.Contains("Player")) return (Cast<APlayerCharacter>(Cast<APlayerCharacter>(UGameplayStatics::GetActorOfClass(this, APlayerCharacter::StaticClass())))->Health <= InHealth);
-	else if (InSubject == GetName()) return (Health <= InHealth);
+	if (InSubject.Contains("Player")) return (Player->Health <= InHealth);
+	else return (Health <= InHealth);
 
 	// return true as a default in case of null pointer
 	return true;
