@@ -4,10 +4,10 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Character.h"
+#include "AIController.h" 
 #include "../System/Inventory.h"
 #include "../Pickups/Weapon.h"
 #include "PlayerCharacter.h"
-#include "GOAPAIController.h"
 #include "Components/AudioComponent.h"
 #include "GOAPEnemy.generated.h"
 
