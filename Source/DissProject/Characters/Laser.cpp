@@ -3,6 +3,7 @@
 
 #include "Laser.h"
 #include "Kismet/KismetMathLibrary.h"
+#include "PlayerCharacter.h"
 
 // Sets default values
 ALaser::ALaser()
@@ -54,7 +55,16 @@ void ALaser::SetupLaser(float InRange, float InDamage, FVector InForwardDirectio
 // This is used to announce when the laser overlaps something
 void ALaser::OnLaserOverlap(class UPrimitiveComponent* HitComp, class AActor* OtherActor, class UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	if (!OtherActor->GetName().Contains("Player") && OtherActor != this && !OtherActor->GetName().Contains("Spawn"))
+	if (!OtherActor->GetName().Contains("Player") && OtherActor != this && !OtherActor->GetName().Contains("WeaponSpawner") && (!OtherActor->GetName().Contains("Enemy") || OtherActor->GetName().Contains("EnemySpawner")))
+	{
+		this->Destroy();
+	}
+	else if (OtherActor->GetName().Contains("Player"))
+	{
+		Cast<APlayerCharacter>(OtherActor)->RecieveAttack(Damage);
+		this->Destroy();
+	}
+	else if (OtherActor->GetName().Contains("Enemy") && !OtherActor->GetName().Contains("EnemySpawner"))
 	{
 		this->Destroy();
 	}
