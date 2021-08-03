@@ -4,7 +4,11 @@
 #include "PlayerCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
+#include "GOAPEnemy.h"
+#include "../Pickups/SpawnerBase.h"
 #include "Laser.h"
+#include "DrawDebugHelpers.h"
+#include "Kismet/KismetSystemLibrary.h"
 
 // global constants
 const static float MAX_CAMERA_HEIGHT = 100.f;
@@ -30,8 +34,9 @@ APlayerCharacter::APlayerCharacter()
 	BloodParticleSystem = CreateDefaultSubobject<UParticleSystemComponent>(TEXT("Bloodshot Particles"));
 	BloodParticleSystem->SetupAttachment(this->RootComponent);
 	BloodParticleSystem->bAutoManageAttachment = true;
-	BloodParticleSystem->bAutoActivate = false;
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Ignore);
+	BloodParticleSystem->bAutoActivate = true;
+	BloodParticleSystem->SetWorldLocation(FVector(0.f, 50000000.f, 0.f));
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Block);
 	CreateInventory();
 
 	// We make sure the player possesses the actor, and set the basic input settings
@@ -45,7 +50,8 @@ void APlayerCharacter::OnConstruction(const FTransform& Transform)
 {
 	// This sets the player damage sound to be played on damage taken
 	if (DamageSound) DamageSoundComponent->SetSound(DamageSound);
-
+	if (BloodParticles) BloodParticleSystem->SetTemplate(BloodParticles);
+	
 	// Here we'll make sure all our values stay in a valid range
 	CameraHeight = FMath::Clamp(CameraHeight, 1.f, MAX_CAMERA_HEIGHT);
 	CameraPitchLimit = FMath::Clamp(CameraPitchLimit, 1.f, MAX_CAMERA_PITCH_LIMIT);
@@ -61,7 +67,7 @@ void APlayerCharacter::BeginPlay()
 	
 	// Give the components the correct weapon transforms
 	RangedMesh->AddLocalTransform(WeaponViewportTransform);
-	RangedMesh->AddLocalRotation(FRotator(0.f, 90.f, 0.f));
+	//RangedMesh->AddLocalRotation(FRotator(0.f, 90.f, 0.f));
 	MeleeMesh->AddLocalTransform(WeaponViewportTransform);
 
 	NextInventory(0);
@@ -122,7 +128,7 @@ void APlayerCharacter::CreateInventory()
 
 	// Create a knife weapon and add it to the inventory
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> KnifeAsset(TEXT("/Game/PolygonScifi/Meshes/Weapons/Accessories/SM_Wep_Knife_01.SM_Wep_Knife_01"));
-	FWeaponDetails Knife = FWeaponDetails::FWeaponDetails("Knife", KnifeAsset.Object, nullptr, 10, 0.1f, 0.f, 0.f, EWeaponType::MELEE);
+	FWeaponDetails Knife = FWeaponDetails::FWeaponDetails("Knife", KnifeAsset.Object, nullptr, 35, 0.1f, 500.f, 0.f, EWeaponType::MELEE);
 	Inventory->AddItem(Knife);
 }
 
@@ -262,6 +268,11 @@ void APlayerCharacter::PickUp(FWeaponDetails InWeapon, int32 InMoney)
 {
 	// First we update the player's inventory
 	Inventory->AddItem(InWeapon, InMoney);
+	if (InWeapon.Name == CurrentWeapon.Name)
+	{
+		CurrentWeapon.Ammo += InWeapon.Ammo;
+		OnAmmoUpdate.Broadcast(CurrentWeapon.Ammo);
+	}
 
 	// And then we announce the new money
 	if (InMoney != 0)
@@ -282,11 +293,20 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 	FVector RayStart = PlayerCamera->GetComponentLocation();
 	FVector RayEnd = RayStart + (PlayerCamera->GetForwardVector() * CurrentWeapon.Range);
 	FCollisionQueryParams CollisionParameters;
+	TArray<AActor*> AllLasers;
+	TArray<AActor*> AllEnemies;
+	TArray<AActor*> AllSpawners;
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ALaser::StaticClass(), AllLasers);
+	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ASpawnerBase::StaticClass(), AllSpawners);
 	CollisionParameters.AddIgnoredActor(this);
+	CollisionParameters.AddIgnoredActors(AllLasers);
+	CollisionParameters.AddIgnoredActors(AllSpawners);
 
 	// These are the parameters for the laser
 	FActorSpawnParameters SpawnParams;
-	FVector SpawnLoc = RangedMesh->GetSocketLocation("Gun") + (GetActorForwardVector() * 100.f);
+	FVector SpawnLoc;
+	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
+	if (WeaponType == EWeaponType::RANGED) SpawnLoc = RangedMesh->GetSocketLocation("Gun") + (GetActorForwardVector() * 100.f);
 	FRotator SpawnRot = FRotator(0, 0, 0);
 	ALaser* Laser = nullptr;
 
@@ -301,13 +321,12 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 		// Here we do a ray trace to see if an enemy is in the weapon's firing line
 		if (GetWorld()->LineTraceSingleByChannel(HitEnemy, RayStart, RayEnd, ECC_Visibility, CollisionParameters))
 		{
-
-			AActor* EnemyTest = Cast<AActor>(HitEnemy.GetActor());
+			AGOAPEnemy* EnemyTest = Cast<AGOAPEnemy>(HitEnemy.GetActor());
 			if (EnemyTest)
 			{
-				BloodParticleSystem->SetWorldLocation(HitEnemy.ImpactPoint, false, nullptr, ETeleportType::None);
-				BloodParticleSystem->Activate(true);
-				//EnemyTest->RecieveAttack(Damage);
+				BloodParticleSystem->SetWorldLocation(HitEnemy.Location, false, nullptr, ETeleportType::None);
+				BloodParticleSystem->ActivateSystem(true);
+				EnemyTest->RecieveAttack(CurrentWeapon.Damage);
 			}
 		}
 		AttackSoundComponent->SetSound(MeleeSound);
@@ -318,7 +337,7 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 		if (CurrentWeapon.Ammo > 0)
 		{
 			Laser = GetWorld()->SpawnActor<ALaser>(ALaser::StaticClass(), SpawnLoc, SpawnRot, SpawnParams);
-			Laser->SetupLaser(CurrentWeapon.Range, CurrentWeapon.Damage, PlayerCamera->GetForwardVector(), 100.f);
+			if (Laser) Laser->SetupLaser(CurrentWeapon.Range, CurrentWeapon.Damage, PlayerCamera->GetForwardVector(), 100.f);
 			AttackSoundComponent->SetSound(RangedSound);
 			--CurrentWeapon.Ammo;
 			OnAmmoUpdate.Broadcast(CurrentWeapon.Ammo);
@@ -334,12 +353,11 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 // Used to tell the player they have been attacked by a zombie
 void APlayerCharacter::RecieveAttack(float Damage)
 {
-	Health -= Damage;
-	DamageSoundComponent->Play();
-	OnDamage.Broadcast(Health);
-	if (Health <= 0.f)
+	if (Health - Damage <= 0.f) OnPlayerDeath.Broadcast();
+	else
 	{
-		OnDamage.Clear();
-		OnPlayerDeath.Broadcast();
+		Health -= Damage;
+		DamageSoundComponent->Play();
+		OnDamage.Broadcast(Health);
 	}
 }

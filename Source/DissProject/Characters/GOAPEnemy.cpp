@@ -25,6 +25,8 @@ AGOAPEnemy::AGOAPEnemy()
 
 	// Rotate the mesh to face forward
 	GetMesh()->AddLocalRotation(FRotator(0.f, -90.f, 0.f));
+	GetMesh()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Block);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECollisionChannel::ECC_Visibility, ECollisionResponse::ECR_Block);
 	
 	// Create the inventory and action base
 	CreateInventory();
@@ -78,8 +80,10 @@ void AGOAPEnemy::CreateInventory()
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> GunAsset(TEXT("/Game/PolygonScifi/Meshes/Weapons/SK_Wep_Rifle_Plasma_01.SK_Wep_Rifle_Plasma_01"));
 	FWeaponDetails Gun = FWeaponDetails::FWeaponDetails("Plasma Rifle", nullptr, GunAsset.Object, 20.f, 0.33f, 4000.f, 36, EWeaponType::RANGED, EWeaponSpeed::ONESHOT);
 	Inventory->AddItem(Gun);
-	CurrentWeapon = Inventory->Inventory[0];
-
+	CurrentInventoryItem = 0;
+	// Equip the gun
+	Equip(Inventory->Inventory[0]);
+	
 	// The audio of the attacks
 	AttackSoundComponent = CreateDefaultSubobject<UAudioComponent>(TEXT("Attack Sound Component"));
 	AttackSoundComponent->SetupAttachment(this->RootComponent);
@@ -88,9 +92,6 @@ void AGOAPEnemy::CreateInventory()
 	static ConstructorHelpers::FObjectFinder<USoundCue> RangedSoundAsset(TEXT("/Game/Assets/Audio/SC_Laser.SC_Laser"));
 	RangedSound = RangedSoundAsset.Object;
 	AttackSoundComponent->SetSound(RangedSound);
-
-	// Equip the gun
-	Equip(Gun);
 }
 
 // Called to create the actionbase
@@ -135,24 +136,30 @@ void AGOAPEnemy::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	UE_LOG(LogTemp, Warning, TEXT("IsMoving: %s, IsMovingToPlayer: %s, Attacking: %s"), *FString::FromInt(int32(IsMoving)), *FString::FromInt(int32(IsMovingToPlayer)), *FString::FromInt(int32(Attacking)));
-
 	// If we are mid-move, check location against goal
 	if (IsMoving)
 	{
 		// If we are at the goal, stop moving and take next action
-		if ((IsMovingToPlayer && UKismetMathLibrary::Vector_Distance(GetActorLocation(), Player->GetActorLocation()) <= CurrentWeapon.Range * 0.6f) || // Aka player is in range
+		if ((IsMovingToPlayer && UKismetMathLibrary::Vector_Distance(GetActorLocation(), Player->GetActorLocation()) <= CurrentWeapon.Range * 0.7f) || // Aka player is in range
 			(!IsMovingToPlayer && UKismetMathLibrary::Vector_Distance(GetActorLocation(), MovingToLocation) <= LocationErrorMargin)) // Aka the goal location is close enough, so stop and take action
 		{
 			// Stop moving and take the next action in the plan
 			IsMoving = false;
-			IsMovingToPlayer = false;
-			AIController->StopMovement();
-			TakeAction();
+			if (!IsMovingToPlayer && !CheckAmmo())
+			{
+				int32 RandomSpawner = FMath::RandRange(0, WeaponSpawners.Num() - 1);
+				MovingToLocation = WeaponSpawners[RandomSpawner]->GetActorLocation();
+				AIController->MoveToLocation(MovingToLocation, LocationErrorMargin);
+			}
+			else
+			{
+				IsMovingToPlayer = false;
+				AIController->StopMovement();
+				TakeAction();
+			}
 		}
 	}
-	else if (!IsMoving && !Attacking) { TakeAction(); } // If the enemy is doing nothing, do something
-	else if (AttackTimer <= 0.f && Attacking) { SpawnLaser(); } // If the enemy is attacking and the weapon has cooled down, spawn a laser
+	if (AttackTimer <= 0.f && Attacking) { Attack(); } // If the enemy is attacking and the weapon has cooled down, spawn a laser
 	
 	if (AttackTimer > 0.f) AttackTimer -= DeltaTime; // Reduce cooldown time if necessary
 }
@@ -286,20 +293,16 @@ bool AGOAPEnemy::ValidatePlan(TArray<FAction> TestPlan)
 // Called when an enemy wants to initiate an action, returns whether the action is valid
 bool AGOAPEnemy::TakeAction()
 {
-	UE_LOG(LogTemp, Warning, TEXT("TakeAction() before while loop"));
 	// Make sure the new plan is valid
 	bool PlanValid = ValidatePlan(Plan);
 	while (!PlanValid)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("TakeAction() while (!PlanValid || !Plan.IsValidIndex(0))"));
 		Plan = GetPlan();
 		PlanValid = ValidatePlan(Plan);
 	}
-	UE_LOG(LogTemp, Warning, TEXT("TakeAction() after while loop"));
 	
 	// Remove the next action from the plan, and prepare to facilitate
 	FAction Action = Plan.Pop(true);
-	UE_LOG(LogTemp, Warning, TEXT("TakeAction() after plan pop()"));
 	
 	// Check if the preconditions are met
 	for (int32 PreconChecker = 0; PreconChecker < Action.Preconditions.Num(); ++PreconChecker)
@@ -315,7 +318,7 @@ bool AGOAPEnemy::TakeAction()
 void AGOAPEnemy::CalculateAction(FAction Action)
 {
 	// Get the action to take, and take the action
-	if (Action.Action == "Attack") Attack();
+	if (Action.Action == "Attack") Attacking = true;
 	else if (Action.Action == "MoveToLocation") MoveToLocation(Action);
 }
 void AGOAPEnemy::Attack()
@@ -323,34 +326,35 @@ void AGOAPEnemy::Attack()
 	// If we have ammo, attack
 	if (CurrentWeapon.Ammo > 0)
 	{
-		if (!Attacking) Attacking = true;
+		SpawnLaser();
 	}
 	else // If we don't have ammo, flick through the inventory to see if there is any gun with ammo
 	{
 		// First we save the current weapon
-		Inventory->Inventory[CurrentInventoryItem].Ammo = CurrentWeapon.Ammo;
+		Inventory->Inventory[CurrentInventoryItem].Ammo = 0;
 
-		// We save the index we started on
-		int32 StartingIndex = CurrentInventoryItem + 1;
-
-		while (CurrentWeapon.Ammo == 0 && CurrentInventoryItem != StartingIndex)
+		// We loop through the inventory and find anything with ammo
+		bool AmmoFound = false;
+		for (int32 InventoryIndex = 0; InventoryIndex < Inventory->Inventory.Num(); ++InventoryIndex)
 		{
-			// Wrap the item around the valid indicies
-			if (CurrentInventoryItem < 0) CurrentInventoryItem = Inventory->Inventory.Num() - 1;
-			if (CurrentInventoryItem == Inventory->Inventory.Num()) CurrentInventoryItem = 0;
-
-			// If we find a gun that has ammo, equip it
-			if (Inventory->Inventory[CurrentInventoryItem].Ammo > 0 && Inventory->Inventory[CurrentInventoryItem].Type == EWeaponType::RANGED)
+			if (Inventory->Inventory[InventoryIndex].Ammo > 0)
 			{
-				CurrentWeapon = Inventory->Inventory[CurrentInventoryItem];
+				AmmoFound = true;
+				CurrentInventoryItem = InventoryIndex;
 				break;
 			}
-			++CurrentInventoryItem;
 		}
-		if (CurrentWeapon.Ammo > 0)
+
+		// If we found ammo, equip that weapon
+		if (AmmoFound)
 		{
 			Equip(Inventory->Inventory[CurrentInventoryItem]);
 			Attack();
+		}
+		else
+		{
+			Attacking = false;
+			TakeAction();
 		}
 	}
 }
@@ -359,21 +363,30 @@ void AGOAPEnemy::SpawnLaser()
 	// We make sure we are facing the player
 	SetActorRotation(UKismetMathLibrary::FindLookAtRotation(GetActorLocation(), Player->GetActorLocation()));
 
-	// These are the parameters for the laser
-	FActorSpawnParameters SpawnParams;
-	FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 200;
-	FRotator SpawnRot = FRotator(0, 0, 0);
-	ALaser* Laser;
-
-	// Spawn a laser and assign its attributes
-	Laser = GetWorld()->SpawnActor<ALaser>(ALaser::StaticClass(), SpawnLoc, SpawnRot, SpawnParams);
-	Laser->SetupLaser(CurrentWeapon.Range, CurrentWeapon.Damage, GetActorForwardVector(), 100.f);
+	// This check ensures that the enemy only spawns a laser if the player is far enough away that the laser will not bug out due to start overlaps
+	if (UKismetMathLibrary::Vector_Distance(GetActorLocation(), Player->GetActorLocation()) > 300.f)
+	{
+		// These are the parameters for the laser
+		FActorSpawnParameters SpawnParams;
+		SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButDontSpawnIfColliding;
+		FVector SpawnLoc = GetActorLocation() + GetActorForwardVector() * 100;
+		FRotator SpawnRot = FRotator(0, 0, 0);
+		
+		// Spawn a laser and assign its attributes
+		ALaser* Laser = GetWorld()->SpawnActor<ALaser>(ALaser::StaticClass(), SpawnLoc, SpawnRot, SpawnParams);
+		if (Laser) Laser->SetupLaser(CurrentWeapon.Range, CurrentWeapon.Damage, GetActorForwardVector(), 100.f);
+	}
+	else // If the player is too close to spawn a laser, then just hurt the player, but play the sound anyway to make it seem like they have been shot
+	{
+		Player->RecieveAttack(CurrentWeapon.Damage);
+	}
 	AttackSoundComponent->Play();
-	AttackTimer = CurrentWeapon.RateOfFire * 3;
+	AttackTimer = CurrentWeapon.RateOfFire * 2;
 	CurrentWeapon.Ammo--;
 
 	// And turn off the attack
 	Attacking = false;
+	TakeAction();
 }
 void AGOAPEnemy::MoveToLocation(FAction Action)
 {
@@ -412,7 +425,14 @@ void AGOAPEnemy::MoveToLocation(FAction Action)
 void AGOAPEnemy::Equip(FWeaponDetails Weapon)
 {
 	CurrentWeapon = Weapon;
-	RangedMeshComponent->SetSkeletalMesh(Weapon.RangedMesh);
+	RangedMeshComponent->SetSkeletalMesh(CurrentWeapon.RangedMesh);
+}
+void AGOAPEnemy::PickupWeapon(FWeaponDetails WeaponDetails, AActor* Actor)
+{
+	Inventory->AddItem(WeaponDetails, 0);
+	if (WeaponDetails.Name == CurrentWeapon.Name) CurrentWeapon.Ammo += WeaponDetails.Ammo;
+	IsMoving = false;
+	TakeAction();
 }
 
 // Called to validate an action's precondition is met
@@ -449,11 +469,11 @@ bool AGOAPEnemy::CheckSight(FVector LookAtLocation, FString Actor)
 	TArray<AActor*> AllLasers;
 	TArray<AActor*> AllEnemies;
 	UGameplayStatics::GetAllActorsOfClass(GetWorld(), ALaser::StaticClass(), AllLasers);
-	UGameplayStatics::GetAllActorsOfClass(GetWorld(), AGOAPEnemy::StaticClass(), AllEnemies);
+	//UGameplayStatics::GetAllActorsOfClass(GetWorld(), AGOAPEnemy::StaticClass(), AllEnemies);
 	CollisionParameters.AddIgnoredActor(this);
 	CollisionParameters.AddIgnoredActors(WeaponSpawners);
 	CollisionParameters.AddIgnoredActors(AllLasers);
-	CollisionParameters.AddIgnoredActors(AllEnemies);
+	//CollisionParameters.AddIgnoredActors(AllEnemies);
 
 	// If we aren't looking for the player, check the hit location is close enough
 	if (Actor == "")
@@ -472,7 +492,7 @@ bool AGOAPEnemy::CheckSight(FVector LookAtLocation, FString Actor)
 		if (GetWorld()->LineTraceSingleByChannel(HitActor, RayStart, PlayerLocation, ECC_Visibility, CollisionParameters))
 		{
 			// We check to see if the hit location is within an acceptable distance of the target to allow for volume boundries
-			if (HitActor.Actor == Player && UKismetMathLibrary::Vector_Distance(HitActor.Location, GetActorLocation()) < CurrentWeapon.Range * 0.7f) return true;
+			if (HitActor.Actor == Player && UKismetMathLibrary::Vector_Distance(HitActor.Location, GetActorLocation()) < CurrentWeapon.Range * 0.8f) return true;
 		}
 	}
 
@@ -501,10 +521,21 @@ bool AGOAPEnemy::CheckAmmo()
 	// Loop through the inventory and check if anything has ammo
 	for (int32 InventoryIndex = 0; InventoryIndex < Inventory->Inventory.Num(); ++InventoryIndex)
 	{
-		FWeaponDetails CheckingWeapon = Inventory->Inventory[InventoryIndex];
-		if (CheckingWeapon.Type == EWeaponType::RANGED && CheckingWeapon.Ammo > 0) return true;
+		if (Inventory->Inventory[InventoryIndex].Ammo > 0) return true;
 	}
 
 	// Return false if there was no ranged ammo found
 	return false;
+}
+
+// Used to tell the enemy how much damage to take
+void AGOAPEnemy::RecieveAttack(float Damage)
+{
+	// Avoid weird GOAP glitches by pre-determining death
+	if (Health - Damage <= 0.f)
+	{
+		OnDeath.Broadcast();
+		this->Destroy();
+	}
+	else Health -= Damage;
 }

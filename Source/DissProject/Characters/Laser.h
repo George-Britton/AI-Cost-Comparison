@@ -52,7 +52,7 @@ protected:
 
 public:	
 	// Called to set the laser's properties
-	void SetupLaser(float InRange, float InDamage, FVector InForwardDirection, float InSpeed);
+	void SetupLaser(float InRange = 15000.f, float InDamage = 15.f, FVector InForwardDirection = FVector(1.f, 0.f, 0.f), float InSpeed = 10.f);
 
 	// This is used to announce when the laser overlaps something
 	UFUNCTION()

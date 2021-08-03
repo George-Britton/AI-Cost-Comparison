@@ -6,6 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "SpawnerBase.generated.h"
 
+
 UCLASS()
 class DISSPROJECT_API ASpawnerBase : public AActor
 {
@@ -14,7 +15,7 @@ class DISSPROJECT_API ASpawnerBase : public AActor
 public:	
 	// Sets default values for this actor's properties
 	ASpawnerBase();
-
+	
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;

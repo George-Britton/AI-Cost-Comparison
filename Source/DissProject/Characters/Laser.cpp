@@ -4,6 +4,7 @@
 #include "Laser.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "PlayerCharacter.h"
+#include "GOAPEnemy.h"
 
 // Sets default values
 ALaser::ALaser()
@@ -13,10 +14,11 @@ ALaser::ALaser()
 	RootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("Root"));
 	LaserMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("Laser Mesh Component"));
 	LaserMeshComponent->SetupAttachment(this->RootComponent);
-	LaserMeshComponent->SetCollisionProfileName("OverlapAll");
+	LaserMeshComponent->SetCollisionProfileName("IgnoreAll");
 	LaserMeshComponent->SetGenerateOverlapEvents(true);
 	CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("Capsule Component"));
 	CapsuleComponent->SetupAttachment(this->RootComponent);
+	CapsuleComponent->SetCollisionProfileName("OverlapAll");
 	
 	while (!LaserMesh)
 	{
@@ -48,6 +50,7 @@ void ALaser::SetupLaser(float InRange, float InDamage, FVector InForwardDirectio
 	Damage = InDamage;
 	Speed = InSpeed;
 
+	UE_LOG(LogTemp, Warning, TEXT("Range: %s, Damage: %s, Direction: %s, Speed %s"), *FString::SanitizeFloat(InRange), *FString::SanitizeFloat(InDamage), *InForwardDirection.ToString(), *FString::SanitizeFloat(InSpeed));
 	ForwardDirection = InForwardDirection;
 	SetActorRotation(UKismetMathLibrary::FindLookAtRotation(StartLocation, StartLocation + ForwardDirection));
 }
@@ -66,6 +69,7 @@ void ALaser::OnLaserOverlap(class UPrimitiveComponent* HitComp, class AActor* Ot
 	}
 	else if (OtherActor->GetName().Contains("Enemy") && !OtherActor->GetName().Contains("EnemySpawner"))
 	{
+		Cast<AGOAPEnemy>(OtherActor)->RecieveAttack(Damage);
 		this->Destroy();
 	}
 }
@@ -85,4 +89,3 @@ void ALaser::Tick(float DeltaTime)
 	}
 
 }
-

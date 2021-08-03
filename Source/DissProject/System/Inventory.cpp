@@ -17,7 +17,6 @@ void UInventory::BeginPlay()
 {
 	Super::BeginPlay();
 
-	//Inventory.Init(FWeaponDetails::FWeaponDetails("Knife", ));
 	
 }
 

@@ -11,6 +11,9 @@
 #include "Components/AudioComponent.h"
 #include "GOAPEnemy.generated.h"
 
+// We make a delegate for if the enemy dies
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDeath);
+
 // Enum to tell the state what variable type it should be checking for true
 UENUM()
 enum class EVariableType : uint8
@@ -269,6 +272,10 @@ public:
 	UPROPERTY()
 		float AttackTimer = 0.f;
 
+	// Event distributors
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+		FOnDeath OnDeath;
+
 public:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -296,6 +303,8 @@ public:
 
 	// Called to equip a weapon
 	void Equip(FWeaponDetails Weapon);
+	UFUNCTION(BlueprintCallable, Category = "Events")
+		void PickupWeapon(FWeaponDetails WeaponDetails, AActor* Actor);
 
 	// Called to validate an action's precondition is met
 	bool ValidatePrecondition(FGOAPState Precondition);
@@ -313,4 +322,6 @@ public:
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
+	// Used to tell the enemy how much damage to take
+	void RecieveAttack(float Damage);
 };
