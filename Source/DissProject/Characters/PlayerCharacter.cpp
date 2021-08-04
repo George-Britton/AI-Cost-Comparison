@@ -7,6 +7,7 @@
 #include "../Pickups/SpawnerBase.h"
 #include "Laser.h"
 #include "DrawDebugHelpers.h"
+#include "FSMEnemy.h"
 #include "Kismet/KismetSystemLibrary.h"
 
 // global constants
@@ -320,13 +321,13 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 		// Here we do a ray trace to see if an enemy is in the weapon's firing line
 		if (GetWorld()->LineTraceSingleByChannel(HitEnemy, RayStart, RayEnd, ECC_Visibility, CollisionParameters))
 		{
-			// TODO: AGOAPEnemy* EnemyTest = Cast<AGOAPEnemy>(HitEnemy.GetActor());
-			/*if (EnemyTest)
+			AFSMEnemy* EnemyTest = Cast<AFSMEnemy>(HitEnemy.GetActor());
+			if (EnemyTest)
 			{
 				BloodParticleSystem->SetWorldLocation(HitEnemy.Location, false, nullptr, ETeleportType::None);
 				BloodParticleSystem->ActivateSystem(true);
 				EnemyTest->RecieveAttack(CurrentWeapon.Damage);
-			}*/
+			}
 		}
 		AttackSoundComponent->SetSound(MeleeSound);
 		AttackSoundComponent->Play();
