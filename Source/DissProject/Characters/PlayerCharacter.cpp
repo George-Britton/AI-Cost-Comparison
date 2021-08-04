@@ -4,7 +4,6 @@
 #include "PlayerCharacter.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Components/CapsuleComponent.h"
-#include "GOAPEnemy.h"
 #include "../Pickups/SpawnerBase.h"
 #include "Laser.h"
 #include "DrawDebugHelpers.h"
@@ -321,13 +320,13 @@ void APlayerCharacter::SendAttack(EWeaponType WeaponType)
 		// Here we do a ray trace to see if an enemy is in the weapon's firing line
 		if (GetWorld()->LineTraceSingleByChannel(HitEnemy, RayStart, RayEnd, ECC_Visibility, CollisionParameters))
 		{
-			AGOAPEnemy* EnemyTest = Cast<AGOAPEnemy>(HitEnemy.GetActor());
-			if (EnemyTest)
+			// TODO: AGOAPEnemy* EnemyTest = Cast<AGOAPEnemy>(HitEnemy.GetActor());
+			/*if (EnemyTest)
 			{
 				BloodParticleSystem->SetWorldLocation(HitEnemy.Location, false, nullptr, ETeleportType::None);
 				BloodParticleSystem->ActivateSystem(true);
 				EnemyTest->RecieveAttack(CurrentWeapon.Damage);
-			}
+			}*/
 		}
 		AttackSoundComponent->SetSound(MeleeSound);
 		AttackSoundComponent->Play();
