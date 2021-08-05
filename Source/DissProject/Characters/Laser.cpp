@@ -4,6 +4,7 @@
 #include "Laser.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "PlayerCharacter.h"
+#include "BTEnemy.h"
 
 // Sets default values
 ALaser::ALaser()
@@ -68,7 +69,7 @@ void ALaser::OnLaserOverlap(class UPrimitiveComponent* HitComp, class AActor* Ot
 	}
 	else if (OtherActor->GetName().Contains("Enemy") && !OtherActor->GetName().Contains("EnemySpawner"))
 	{
-		// TODO: Cast<AGOAPEnemy>(OtherActor)->RecieveAttack(Damage);
+		Cast<ABTEnemy>(OtherActor)->RecieveAttack(Damage);
 		this->Destroy();
 	}
 }
