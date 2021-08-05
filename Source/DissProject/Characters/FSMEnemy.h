@@ -14,6 +14,16 @@
 // We make a delegate for if the enemy dies
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnDeath);
 
+UENUM()
+enum class EFSMState : uint8
+{
+	IDLE UMETA(DisplayName="Idle"),
+	ATTACKING UMETA(DisplayName = "Attacking"),
+	MOVINGTOPLAYER UMETA(DisplayName = "Moving to player"),
+	MOVINGTOAMMO UMETA(DisplayName = "Moving to ammo"),
+	MAX
+};
+
 UCLASS()
 class DISSPROJECT_API AFSMEnemy : public ACharacter
 {
@@ -46,12 +56,15 @@ public:
 
 	// The AI controller for the enemy
 	AAIController* AIController = nullptr;
+	EFSMState EnemyState = EFSMState::MOVINGTOPLAYER;
+
+	// The frequency with which to check if the enemy can see the player, as every frame would be too much
+	float SightTime = 0.5f;
+	float SightTimer = 0.f;
 	
 	// Variables used for the enemy's attacks
 	UPROPERTY()
 		USkeletalMeshComponent* RangedMeshComponent = nullptr;
-	UPROPERTY()
-		bool Attacking = false;
 	UPROPERTY()
 		float AttackTimer = 0.f;
 	UAudioComponent* AttackSoundComponent = nullptr;
@@ -75,8 +88,17 @@ public:
 	// Called to equip a weapon
 	void Equip(FWeaponDetails Weapon);
 	UFUNCTION(BlueprintCallable, Category = "Events")
-		void PickupWeapon(FWeaponDetails WeaponDetails, AActor* Actor);
+		void PickupWeapon(FWeaponDetails WeaponDetails);
+
+	// Used to see if the player is in line of sight
+	bool CanSeePlayer();
+	
+	// Called to attack the player
+	void Attack();
+
+	// Called to get the closest weapon spawner for the enemy to go to
+	AActor* GetClosestSpawner();
 	
 	// Called to inflict damage on the enemy
-	void RecieveAttack(float Damage) { Health -= Damage; }
+	void RecieveAttack(float Damage);
 };
