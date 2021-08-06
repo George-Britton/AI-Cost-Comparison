@@ -8,6 +8,7 @@
 #include "../System/Inventory.h"
 #include "AIController.h"
 #include "PlayerCharacter.h"
+#include "Nodes/BaseNode.h"
 #include "BTEnemy.generated.h"
 
 // We make a delegate for if the enemy dies
@@ -23,14 +24,18 @@ public:
 	ABTEnemy();
 
 	// The health of the enemy
-	UPROPERTY(EditAnywhere, Category = "FSM")
+	UPROPERTY(EditAnywhere, Category = "BT")
 		float Health = 100.f;
 
+	// The tree of nodes for the behaviour tree
+	UPROPERTY(EditAnywhere, Category = "BT")
+		UBaseNode* Tree = nullptr;
+
 	// The weapon currently drawn by the enemy
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FSM")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "BT")
 		FWeaponDetails CurrentWeapon;
 	// The array of weapons the enemy has
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FSM")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "BT")
 		UInventory* Inventory = nullptr;
 	// The index of the current weapon in the inventory
 	int32 CurrentInventoryItem = 0;
@@ -66,6 +71,9 @@ public:
 	// Called to create the inventory
 	void CreateInventory();
 	
+	// Called to create the behaviour tree
+	UBaseNode* CreateTree(){ return nullptr; };
+
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;
 
