@@ -22,3 +22,21 @@ void UBaseNode::BeginPlay()
 	// ...
 	
 }
+
+// Called to set the world variables from the parent enemies
+void UBaseNode::InitNode(UBaseNode* InParentNode, AActor* InParentEnemy, AActor* InPlayer)
+{
+	// Set this node's enemy and player variables
+	ParentNode = InParentNode;
+	ParentEnemy = InParentEnemy;
+	Player = InPlayer;
+
+	// Traverse down the tree and initiate the children
+	if (Children.IsValidIndex(0))
+	{
+		for (auto& Child : Children) Child->InitNode(this, InParentEnemy, InPlayer);
+		
+		// Set the children state array to have the same number of states as children
+		ChildrenStates.Init(ENodeState::MAX, Children.Num());
+	}
+}

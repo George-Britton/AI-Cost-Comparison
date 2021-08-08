@@ -10,14 +10,19 @@ UENUM()
 enum class ENodeType : uint8
 {
 	SEQUENCE UMETA(DisplayName = "Sequence"),
-	SELECTOR UMETA(DisplayName = "Selector"),
 	INVERTER UMETA(DisplayName = "Inverter"),
 	SUCCESS UMETA(DisplayName = "Success"),
-	FAILURE UMETA(DisplayName = "Failure"),
-	REPEATER UMETA(DisplayName = "Repeater"),
-	RETRY UMETA(DisplayName = "Retry"),
 	CONDITION UMETA(DisplayName = "Condition"),
 	ACTION UMETA(DisplayName = "Action"),
+	MAX
+};
+
+UENUM()
+enum class ENodeState : uint8
+{
+	SUCCESS UMETA(DisplayName = "Success"),
+	FAILURE UMETA(DisplayName = "Failure"),
+	RUNNING UMETA(DisplayName = "Running"),
 	MAX
 };
 
@@ -33,17 +38,30 @@ public:
 	// The name of the node
 	FName Name = "";
 
+	// The parent enemy of the behaviour tree
+	AActor* ParentEnemy = nullptr;
+
+	// A reference to the player
+	AActor* Player = nullptr;
+
 	// The type of node that it is
 	ENodeType NodeType = ENodeType::MAX;
 
+	// The parent node of this node
+	UBaseNode* ParentNode = nullptr;
+	
 	// The children of the node
 	TArray<UBaseNode*> Children;
+	TArray<ENodeState> ChildrenStates;
 	
 protected:
 	// Called when the game starts
 	virtual void BeginPlay() override;
 
-public:	
+public:
+	// Called to set the world variables from the parent enemies
+	void InitNode(UBaseNode* InParentNode = nullptr, AActor* InParentEnemy = nullptr, AActor* InPlayer = nullptr);
+	
 	// Call upon the logic of the node
 	virtual void Execute() {};
 		

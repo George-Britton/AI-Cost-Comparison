@@ -18,7 +18,6 @@ public:
 	// Overridden execute function
 	void Execute() override;
 
-	// The possible functions of the node
-	virtual void Select() {}
-	virtual void Sequence() {}
+	// The sequence function of the node
+	virtual void Sequence();
 };

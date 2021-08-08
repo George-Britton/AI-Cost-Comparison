@@ -6,10 +6,11 @@
 // Overridden execute function
 void UCompositeNode::Execute()
 {
-	switch (NodeType)
-	{
-	case ENodeType::SELECTOR: Select(); break;
-	case ENodeType::SEQUENCE: Sequence(); break;
-	default: break;
-	}
+	Sequence();
+}
+
+// The sequence function of the node
+void UCompositeNode::Sequence()
+{
+	
 }

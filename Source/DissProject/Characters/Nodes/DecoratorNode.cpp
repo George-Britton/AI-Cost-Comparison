@@ -10,9 +10,16 @@ void UDecoratorNode::Execute()
 	{
 	case ENodeType::INVERTER: Invert(); break;
 	case ENodeType::SUCCESS: Success(); break;
-	case ENodeType::FAILURE: Failure(); break;
-	case ENodeType::REPEATER: Repeat(); break;
-	case ENodeType::RETRY: Retry(); break;
 	default: break;
 	}
+}
+
+// The possible functions of the node
+void UDecoratorNode::Invert()
+{
+	
+}
+void UDecoratorNode::Success()
+{
+	
 }
