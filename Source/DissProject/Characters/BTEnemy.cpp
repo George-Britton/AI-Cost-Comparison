@@ -5,6 +5,18 @@
 #include "../Pickups/SpawnerBase.h"
 #include "Sound/SoundCue.h"
 #include "Laser.h"
+#include "Nodes/BT/AttackNode.h"
+#include "Nodes/BT/CanSeePlayerNode.h"
+#include "Nodes/BT/CheckAttackTimerNode.h"
+#include "Nodes/BT/CheckSightTimerNode.h"
+#include "Nodes/BT/ForceSuccessNode.h"
+#include "Nodes/BT/GetClosestAmmoNode.h"
+#include "Nodes/BT/GoToNode.h"
+#include "Nodes/BT/HasAmmoNode.h"
+#include "Nodes/BT/InverterNode.h"
+#include "Nodes/BT/IsAtAmmoNode.h"
+#include "Nodes/BT/IsAtPlayerNode.h"
+#include "Nodes/BT/SequenceNode.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "Kismet/KismetMathLibrary.h"
 
@@ -64,6 +76,9 @@ void ABTEnemy::BeginPlay()
 
 	// Get the reference to the player
 	Player = Cast<APlayerCharacter>(UGameplayStatics::GetActorOfClass(this, APlayerCharacter::StaticClass()));
+	
+	// And create the behaviour tree
+	Tree = CreateTree();
 }
 
 // Called to create the inventory
@@ -90,13 +105,70 @@ void ABTEnemy::CreateInventory()
 	AttackSoundComponent->SetSound(RangedSound);
 }
 
+// Called to create the behaviour tree
+UBaseNode* ABTEnemy::CreateTree()
+{
+	USequenceNode* RootNode = Cast<USequenceNode>(StaticConstructObject_Internal(USequenceNode::StaticClass(), this));
+	
+	// This is the ammo-related branch of the tree
+		USequenceNode* AmmoSequenceNode = Cast<USequenceNode>(StaticConstructObject_Internal(USequenceNode::StaticClass(), this));
+			UInverterNode* HasAmmoInvertNode = Cast<UInverterNode>(StaticConstructObject_Internal(UInverterNode::StaticClass(), this));
+				UHasAmmoNode* HasAmmoNode = Cast<UHasAmmoNode>(StaticConstructObject_Internal(UHasAmmoNode::StaticClass(), this));
+			UGetClosestAmmoNode* GetClosestAmmoNode = Cast<UGetClosestAmmoNode>(StaticConstructObject_Internal(UGetClosestAmmoNode::StaticClass(), this));
+			UGoToNode* GoToAmmoNode = Cast<UGoToNode>(StaticConstructObject_Internal(UGoToNode::StaticClass(), this));
+			UForceSuccessNode* IsAtAmmoSuccessNode = Cast<UForceSuccessNode>(StaticConstructObject_Internal(UForceSuccessNode::StaticClass(), this));
+				UIsAtAmmoNode* IsAtAmmoNode = Cast<UIsAtAmmoNode>(StaticConstructObject_Internal(UIsAtAmmoNode::StaticClass(), this));
+			HasAmmoInvertNode->Children.Init(HasAmmoNode, 1);
+		AmmoSequenceNode->Children.Init(HasAmmoInvertNode, 1);
+		AmmoSequenceNode->Children.Emplace(GetClosestAmmoNode);
+		AmmoSequenceNode->Children.Emplace(GoToAmmoNode);
+			IsAtAmmoSuccessNode->Children.Emplace(IsAtAmmoNode);
+		AmmoSequenceNode->Children.Emplace(IsAtAmmoSuccessNode);
+	RootNode->Children.Init(AmmoSequenceNode, 1);
+	
+	// This is the check for the attack cooldown
+		UForceSuccessNode* AttackTimerSuccessNode = Cast<UForceSuccessNode>(StaticConstructObject_Internal(UForceSuccessNode::StaticClass(), this));
+			UCheckAttackTimerNode* CheckAttackTimerNode = Cast<UCheckAttackTimerNode>(StaticConstructObject_Internal(UCheckAttackTimerNode::StaticClass(), this));
+		AttackTimerSuccessNode->Children.Emplace(CheckAttackTimerNode);
+	RootNode->Children.Emplace(AttackTimerSuccessNode);
+	
+	// This is the player-related branch of the tree
+		USequenceNode* PlayerSequenceNode = Cast<USequenceNode>(StaticConstructObject_Internal(USequenceNode::StaticClass(), this));
+			UForceSuccessNode* SightSuccessNode = Cast<UForceSuccessNode>(StaticConstructObject_Internal(UForceSuccessNode::StaticClass(), this));
+				UCheckSightTimerNode* CheckSightNode = Cast<UCheckSightTimerNode>(StaticConstructObject_Internal(UCheckSightTimerNode::StaticClass(), this));
+			UInverterNode* SightInvertNode = Cast<UInverterNode>(StaticConstructObject_Internal(UInverterNode::StaticClass(), this));
+				UCanSeePlayerNode* SeePlayerNode = Cast<UCanSeePlayerNode>(StaticConstructObject_Internal(UCanSeePlayerNode::StaticClass(), this));
+			UGoToNode* GoToPlayerNode = Cast<UGoToNode>(StaticConstructObject_Internal(UGoToNode::StaticClass(), this));
+			UForceSuccessNode* IsAtPlayerSuccessNode = Cast<UForceSuccessNode>(StaticConstructObject_Internal(UForceSuccessNode::StaticClass(), this));
+				UIsAtPlayerNode* IsAtPlayerNode = Cast<UIsAtPlayerNode>(StaticConstructObject_Internal(UIsAtPlayerNode::StaticClass(), this));
+			SightSuccessNode->Children.Emplace(CheckSightNode);
+		PlayerSequenceNode->Children.Emplace(SightSuccessNode);
+			SightInvertNode->Children.Emplace(SeePlayerNode);
+		PlayerSequenceNode->Children.Emplace(SightInvertNode);
+		PlayerSequenceNode->Children.Emplace(GoToPlayerNode);
+			IsAtPlayerSuccessNode->Children.Emplace(IsAtPlayerNode);
+		PlayerSequenceNode->Children.Emplace(IsAtPlayerSuccessNode);
+	RootNode->Children.Emplace(PlayerSequenceNode);
+	
+	// This is the attack action node
+		UAttackNode* AttackNode = Cast<UAttackNode>(StaticConstructObject_Internal(UAttackNode::StaticClass(), this));
+	RootNode->Children.Emplace(AttackNode);
+	
+	RootNode->InitNode(nullptr, this, Player);
+	return RootNode;
+}
+
 // Called every frame
 void ABTEnemy::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
-	// Reduce the attack timer if necessary
+	// Tick the behaviour tree
+	Tree->Execute();
+
+	// Reduce the attack and sight timers if necessary
 	if (AttackTimer > 0.f) AttackTimer -= DeltaTime;
+	if (SightTimer > 0.f) SightTimer -= DeltaTime;
 }
 
 // Called to equip a weapon

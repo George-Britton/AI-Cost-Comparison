@@ -37,11 +37,13 @@ void UCanSeePlayerNode::Condition()
 		}
 		else
 		{
+			Enemy->MoveToTarget = Player;
 			ParentNode->ChildrenStates[0] = ENodeState::FAILURE;
 		}
 	}
 	else
 	{
+		Enemy->MoveToTarget = Player;
 		ParentNode->ChildrenStates[0] = ENodeState::FAILURE;
 	}
 }

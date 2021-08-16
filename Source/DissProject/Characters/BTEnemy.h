@@ -50,6 +50,7 @@ public:
 
 	// The AI controller for the enemy
 	AAIController* AIController = nullptr;
+	AActor* MoveToTarget = nullptr;
 	
 		// Variables used for the enemy's attacks
 	UPROPERTY()
@@ -58,6 +59,10 @@ public:
 		float AttackTimer = 0.f;
 	UAudioComponent* AttackSoundComponent = nullptr;
 	USoundBase* RangedSound = nullptr;
+	
+	// The frequency with which to check if the enemy can see the player, as every frame would be too much
+	float SightTime = 0.5f;
+	float SightTimer = 0.f;
 	
 	// Event distributors
 	UPROPERTY(BlueprintAssignable, Category = "Events")
@@ -72,7 +77,7 @@ public:
 	void CreateInventory();
 	
 	// Called to create the behaviour tree
-	UBaseNode* CreateTree(){ return nullptr; };
+	UBaseNode* CreateTree();
 
 	// Called every frame
 	virtual void Tick(float DeltaTime) override;

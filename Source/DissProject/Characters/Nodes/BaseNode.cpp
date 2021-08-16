@@ -37,6 +37,6 @@ void UBaseNode::InitNode(UBaseNode* InParentNode, AActor* InParentEnemy, AActor*
 		for (auto& Child : Children) Child->InitNode(this, InParentEnemy, InPlayer);
 		
 		// Set the children state array to have the same number of states as children
-		ChildrenStates.Init(ENodeState::MAX, Children.Num());
+		ChildrenStates.Init(ENodeState::RUNNING, Children.Num());
 	}
 }

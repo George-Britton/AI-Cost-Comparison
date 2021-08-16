@@ -6,6 +6,8 @@
 // Overridden execute function
 void ULeafNode::Execute()
 {
+	Super::Execute();
+	
 	switch (NodeType)
 	{
 	case ENodeType::CONDITION: Condition(); break;

@@ -36,4 +36,5 @@ void UAttackNode::Action()
 	Enemy->AttackSoundComponent->Play();
 	Enemy->AttackTimer = Enemy->CurrentWeapon.RateOfFire * 2;
 	Enemy->CurrentWeapon.Ammo--;
+	ParentNode->ChildrenStates[ParentNode->Children.Find(this)] = ENodeState::SUCCESS;
 }

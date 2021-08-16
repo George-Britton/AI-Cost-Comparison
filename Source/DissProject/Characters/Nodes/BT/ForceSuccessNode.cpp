@@ -6,6 +6,6 @@
 // The overridden invert function from the parent
 void UForceSuccessNode::Success()
 {
+	Children[0]->Execute();
 	if (ChildrenStates[0] != ENodeState::FAILURE) ParentNode->ChildrenStates[ParentNode->Children.Find(this)] = ChildrenStates[0];
-	else Children[0]->Execute();
 }

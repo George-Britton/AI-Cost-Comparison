@@ -8,6 +8,7 @@
 void UHasAmmoNode::Condition()
 {
 	ABTEnemy* Enemy = Cast<ABTEnemy>(ParentEnemy);
+	
 	if (Enemy->CurrentWeapon.Ammo == 0)
 	{
 		// First we save the current weapon

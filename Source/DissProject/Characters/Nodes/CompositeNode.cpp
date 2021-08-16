@@ -6,6 +6,8 @@
 // Overridden execute function
 void UCompositeNode::Execute()
 {
+	Super::Execute();
+	
 	Sequence();
 }
 

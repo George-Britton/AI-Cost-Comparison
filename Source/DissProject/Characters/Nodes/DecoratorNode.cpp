@@ -6,6 +6,8 @@
 // Overridden execute function
 void UDecoratorNode::Execute()
 {
+	Super::Execute();
+	
 	switch (NodeType)
 	{
 	case ENodeType::INVERTER: Invert(); break;
