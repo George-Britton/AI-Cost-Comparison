@@ -3,6 +3,10 @@
 
 ---------------------------------------
 
+The paper that this project was created for can be found [here](https://www.researchgate.net/publication/369453454_Snakes_and_Roundabouts_Comparing_the_Computational_Costs_and_Believability_of_Approaches_to_AI_in_Computer_Games).
+
+---------------------------------------
+
 The three child branches of master (FSM, BT and GOAP) are each host to a single application of an artificial intelligence algorithm.
 
 FSM hosts a simple finite-state machine that directs the enemies in this game in the most common application of AI.
