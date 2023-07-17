@@ -11,6 +11,8 @@ BT demonstrates a custom-written (that being not UE4-API) behaviour tree that di
 
 GOAP contains an implementation of Jeff Orkin's _Goal-Oriented Action Planning_ (Orkin 2003), in which a queue of actions leading to a goal state is creating using the A* algirthm to search the actionbase's preconditions and effects.
 
+<sub>The Framework branch holds the skeleton that each AI is added onto, so that the only difference between each build is the AI included.</sub>
+
 ---------------------------------------
 References:
 
